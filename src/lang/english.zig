@@ -83,6 +83,7 @@ pub fn parse(text: []const u8, out: []E) !Seq {
                 w[n] = std.ascii.toLower(text[i]);
                 n += 1;
             }
+            question = false;
             try word(&seq, w[0..n]);
             continue;
         }
@@ -92,9 +93,15 @@ pub fn parse(text: []const u8, out: []E) !Seq {
         } else if (c == '.' or c == ',' or c == '!' or c == '?') {
             try seq.append(.silence, 180);
             question = c == '?';
+        } else if (c == '\'') {
+            // Apostrophes outside a word do not produce phonemes.
         } else {
             seq.unsupported += 1;
             try seq.append(.silence, 40);
+            if (c >= 128) {
+                i += (std.unicode.utf8ByteSequenceLength(c) catch unreachable);
+                continue;
+            }
         }
         i += 1;
     }

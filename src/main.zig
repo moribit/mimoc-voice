@@ -10,8 +10,18 @@ fn now() f64 {
 }
 fn bench() !void {
     var s = try v.synth.Synth.init(.{});
-    const e = [_]v.event.PhonemeEvent{ .{ .phoneme = .a, .duration_ms = 2000 }, .{ .phoneme = .i, .duration_ms = 2000 }, .{ .phoneme = .u, .duration_ms = 2000 }, .{ .phoneme = .e, .duration_ms = 2000 }, .{ .phoneme = .o, .duration_ms = 2000 } };
-    try s.enqueue(&e);
+    var events: [512]v.event.PhonemeEvent = undefined;
+    const seq = try v.japanese.parse("コンニチワオハヨウモーバスメッセージセツゾクバッテリーエラーコンニチワオハヨウモーバスメッセージセツゾクバッテリーエラーコンニチワオハヨウモーバスメッセージセツゾクバッテリーエラー", &events);
+    var remaining: u16 = 10000;
+    var used: usize = 0;
+    for (seq.events()) |*event| {
+        event.duration_ms = @min(event.duration_ms, remaining);
+        remaining -= event.duration_ms;
+        used += 1;
+        if (remaining == 0) break;
+    }
+    if (remaining != 0) return error.BenchmarkTooShort;
+    try s.enqueue(events[0..used]);
     var out: [512]i16 = undefined;
     var count: usize = 0;
     const start = now();

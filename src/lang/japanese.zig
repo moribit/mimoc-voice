@@ -11,7 +11,7 @@ pub fn parse(text: []const u8, out: []E) !Seq {
     var question = false;
     while (it.nextCodepoint()) |cp| {
         if (cp == 'ッ') {
-            try seq.append(.silence, 100);
+            try seq.append(.silence, 140);
             continue;
         }
         if (cp == 'ー') {
@@ -46,6 +46,7 @@ pub fn parse(text: []const u8, out: []E) !Seq {
             try seq.append(if (cp == 'ャ') .a else if (cp == 'ュ') .u else .o, 85);
             continue;
         }
+        question = false;
         var found = false;
         for (table) |k| {
             if (k.kana != cp) continue;

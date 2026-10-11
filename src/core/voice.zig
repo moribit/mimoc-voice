@@ -22,6 +22,12 @@ pub fn parameters(p: P) Parameters {
         .w => f(300, 700, 2200),
         .y, .j => f(280, 2200, 2900),
         .l => f(400, 1200, 2500),
+        .k, .g => f(450, 1800, 3000),
+        .p, .b => f(350, 800, 2200),
+        .t, .d, .ts => f(450, 2400, 3500),
+        .f, .v => f(900, 2200, 4000),
+        .th, .dh => f(1200, 2600, 4200),
+        .h => f(500, 1500, 2500),
         .s, .z => f(3500, 5500, 6500),
         .sh, .ch => f(1800, 3000, 4500),
         else => f(500, 1500, 2500),
@@ -33,6 +39,15 @@ pub fn parameters(p: P) Parameters {
         else => 0,
     };
     if (p == .silence) q.gain = 0;
+    switch (p) {
+        .m, .n, .N, .ng => {
+            q.formants[0].bandwidth_hz = 60;
+            q.formants[1].gain = 0.2;
+            q.formants[2].gain = 0.1;
+            q.gain = 0.8;
+        },
+        else => {},
+    }
     return q;
 }
 pub const presets = [_]struct { name: []const u8, voice: Voice }{ .{ .name = "Default", .voice = .{} }, .{ .name = "Robot", .voice = .{ .base_pitch_hz = 110, .waveform = .pulse, .breath = 0 } }, .{ .name = "Deep", .voice = .{ .base_pitch_hz = 85, .formant_scale = 0.8 } }, .{ .name = "Bright", .voice = .{ .base_pitch_hz = 180, .formant_scale = 1.18 } }, .{ .name = "Retro", .voice = .{ .base_pitch_hz = 145, .waveform = .sawtooth, .breath = 0.06 } } };

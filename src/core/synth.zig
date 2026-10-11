@@ -52,6 +52,8 @@ pub const Synth = struct {
             for (0..3) |j| {
                 var f = q.formants[j];
                 f.frequency_hz = (self.previous.formants[j].frequency_hz * (1 - blend) + f.frequency_hz * blend) * self.config.voice.formant_scale;
+                f.bandwidth_hz = self.previous.formants[j].bandwidth_hz * (1 - blend) + f.bandwidth_hz * blend;
+                f.gain = self.previous.formants[j].gain * (1 - blend) + f.gain * blend;
                 self.filters[j].configure(f, rate);
             }
             const progress = @as(f32, @floatFromInt(self.frame)) / @as(f32, @floatFromInt(total));
@@ -79,7 +81,7 @@ pub const Synth = struct {
             self.peak = @max(self.peak, @abs(dc));
             const limited = dc / (1 + @abs(dc));
             self.dc_mean += 0.01 * (limited - self.dc_mean);
-            out[count] = @intFromFloat((limited-self.dc_mean) * 14000);
+            out[count] = @intFromFloat((limited - self.dc_mean) * env * 14000);
             count += 1;
             self.frame += 1;
             if (self.frame == total) {

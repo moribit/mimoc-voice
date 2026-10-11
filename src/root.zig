@@ -24,3 +24,7 @@ test {
 test {
     _ = @import("quality_tests.zig");
 }
+pub const studio_model = @import("studio/model.zig");
+test {
+    _ = studio_model;
+}

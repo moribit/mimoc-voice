@@ -33,7 +33,6 @@ test "evaluation corpus finite deterministic bounded duration and DC" {
             }
             try std.testing.expect(count >= 1600 and count < 16000 * 10);
             try std.testing.expect(peak > 100 and peak < 30000);
-            std.debug.print("{s}: peak={d} jump={d} DC={d}\n", .{text,peak,jump,@divTrunc(sum,@as(i64,@intCast(count)))});
             try std.testing.expect(jump < 30000);
             try std.testing.expect(@abs(@divTrunc(sum, @as(i64, @intCast(count)))) < 200);
             try std.testing.expect(std.math.isFinite(a.peak));
