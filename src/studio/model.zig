@@ -28,11 +28,11 @@ pub const Model = struct {
         self.has_previous = true;
     }
     pub fn parse(self: *Model, text: []const u8) !usize {
+        if (text.len > self.current.phrase.len) return error.TextTooLong;
         var out: [capacity]v.event.PhonemeEvent = undefined;
         const seq = if (self.english) try v.english.parse(text, &out) else try v.japanese.parse(text, &out);
         self.remember();
         @memcpy(self.current.events[0..seq.len], seq.events());
-        if (text.len > self.current.phrase.len) return error.TextTooLong;
         @memcpy(self.current.phrase[0..text.len], text);
         self.current.phrase_len = text.len;
         self.current.len = seq.len;
@@ -80,7 +80,9 @@ pub const Model = struct {
     }
     pub fn storeProfile(self: *Model) void {
         const e = self.selectedEvent() orelse return;
-        self.profiles[@backingInt(e.phoneme)] = e.parameters orelse v.voice.parameters(e.phoneme);
+        const q = self.selectedParameters().?;
+        if (v.phoneme.diphthong(e.phoneme)) q.formants_end = self.selectedTarget().?.formants_end;
+        self.profiles[@backingInt(e.phoneme)] = q.*;
     }
     pub fn undo(self: *Model) !void {
         if (!self.has_previous) return;
@@ -112,6 +114,7 @@ pub const Model = struct {
             }
             offset += n;
         }
+        if (s.numerical_faults > 0) return error.NumericalInstability;
     }
     pub fn editVoice(self: *Model, index: usize, value: f32) !void {
         if (!std.math.isFinite(value)) return error.InvalidParameter;
@@ -281,4 +284,15 @@ test "diagnostic ranges preserve parent context and blind freezes snapshots" {
     const before = model.blind_b.targets[2].formants_end[1].frequency_hz;
     try model.editInspector(28, 1300);
     try std.testing.expectEqual(before, model.blind_b.targets[2].formants_end[1].frequency_hz);
+}
+
+test "diphthong endpoint tuning survives profile reuse" {
+    var model = Model{};
+    model.english = true;
+    _ = try model.parse("hello");
+    model.selected = 3;
+    try model.editInspector(28, 1250);
+    model.storeProfile();
+    _ = try model.parse("low");
+    try std.testing.expectEqual(@as(f32, 1250), model.current.targets[1].formants_end[1].frequency_hz);
 }

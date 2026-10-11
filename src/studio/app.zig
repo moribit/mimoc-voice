@@ -278,7 +278,7 @@ fn archiveBlind() !void {
     comparison_saved_trials = model.blind.len;
 }
 fn recordEvaluation() !void {
-    try evaluation_store.append(.{ .session_index = @intCast(evaluation_store.records.items.len + 1), .phrase = model.current.phrase[0..model.current.phrase_len], .language = model.current.language, .voice_preset = @tagName(model.current.preset), .voice = model.current.voice, .envelope = model.current.envelope_mode, .parameter_snapshot = model.current.targets[0..model.current.len], .intelligibility = evaluation_score, .heard_as = heard[0..heard_len], .problem = problem[0..problem_len], .hypothesis = hypothesis[0..hypothesis_len], .decision = decision });
+    try evaluation_store.append(.{ .session_index = @intCast(evaluation_store.records.items.len + 1), .scope = model.scope, .selected = model.selected, .phrase = model.current.phrase[0..model.current.phrase_len], .language = model.current.language, .voice_preset = @tagName(model.current.preset), .voice = model.current.voice, .envelope = model.current.envelope_mode, .parameter_snapshot = model.current.targets[0..model.current.len], .intelligibility = evaluation_score, .heard_as = heard[0..heard_len], .problem = problem[0..problem_len], .hypothesis = hypothesis[0..hypothesis_len], .decision = decision });
     status = "Evaluation recorded; Save session to persist";
 }
 extern fn voice_save_path([*]u8, usize) c_int;
@@ -531,6 +531,8 @@ fn platformEvent(event: window.Event) void {
 extern fn fopen([*:0]const u8, [*:0]const u8) ?*anyopaque;
 extern fn fwrite([*]const u8, usize, usize, *anyopaque) usize;
 extern fn fread([*]u8, usize, usize, *anyopaque) usize;
+extern fn fseek(*anyopaque, c_long, c_int) c_int;
+extern fn ftell(*anyopaque) c_long;
 extern fn fclose(*anyopaque) c_int;
 extern fn getenv([*:0]const u8) ?[*:0]const u8;
 const Session = struct { version: u8 = 2, english: bool, voice: v.voice.Voice, events: []const v.event.PhonemeEvent, targets: ?[]const v.target.AcousticTarget = null, envelope_mode: v.synth.EnvelopeMode = .single, preset: @FieldType(v.studio_model.Snapshot, "preset") = .Default, profiles: []const ?v.voice.Parameters, text: []const u8, evaluations: []const v.evaluation.Record = &.{}, comparisons: []const v.evaluation.Comparison = &.{} };
@@ -538,9 +540,11 @@ fn saveSession() !void {
     try saveSessionTo("voice-session.json");
 }
 fn saveSessionTo(path: [*:0]const u8) !void {
+    if (!valid) return error.InvalidInput;
     try archiveBlind();
     const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, Session{ .english = model.english, .voice = model.current.voice, .events = model.current.events[0..model.current.len], .targets = model.current.targets[0..model.current.len], .envelope_mode = model.current.envelope_mode, .preset = model.current.preset, .profiles = &model.profiles, .text = text[0..length], .evaluations = evaluation_store.records.items, .comparisons = evaluation_store.comparisons.items }, .{ .whitespace = .indent_2 });
     defer std.heap.page_allocator.free(bytes);
+    if (bytes.len > 64 * 1024 * 1024) return error.SessionTooLarge;
     const f = fopen(path, "wb") orelse return error.OpenFailed;
     var closed = false;
     defer if (!closed) {
@@ -555,11 +559,16 @@ fn loadSession() !void {
     try loadSessionFrom("voice-session.json");
 }
 fn loadSessionFrom(path: [*:0]const u8) !void {
-    var bytes: [1024 * 1024]u8 = undefined;
     const f = fopen(path, "rb") orelse return error.OpenFailed;
     defer _ = fclose(f);
-    const n = fread(&bytes, 1, bytes.len, f);
-    if (n == bytes.len) return error.SessionTooLarge;
+    if (fseek(f, 0, 2) != 0) return error.ReadFailed;
+    const size = ftell(f);
+    if (size < 0 or fseek(f, 0, 0) != 0) return error.ReadFailed;
+    if (size > 64 * 1024 * 1024) return error.SessionTooLarge;
+    const bytes = try std.heap.page_allocator.alloc(u8, @intCast(size));
+    defer std.heap.page_allocator.free(bytes);
+    const n = fread(bytes.ptr, 1, bytes.len, f);
+    if (n != bytes.len) return error.ReadFailed;
     const parsed = try std.json.parseFromSlice(Session, std.heap.page_allocator, bytes[0..n], .{});
     defer parsed.deinit();
     const session = parsed.value;
@@ -579,7 +588,7 @@ fn loadSessionFrom(path: [*:0]const u8) !void {
     } else _ = try v.planner.plan(snapshot.events[0..snapshot.len], snapshot.targets[0..snapshot.len], .{ .language = snapshot.language });
     _ = try v.studio_model.Model.createSynth(&snapshot);
     for (session.profiles) |parameters| if (parameters) |q| {
-        const es = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .parameters = q }};
+        const es = [_]v.event.PhonemeEvent{.{ .phoneme = .ow, .parameters = q }};
         var targets: [1]v.target.AcousticTarget = undefined;
         _ = try v.planner.plan(&es, &targets, .{});
     };
@@ -732,6 +741,24 @@ test "Studio session round trip and invalid session preserve state" {
     try std.testing.expectEqual(@as(f32, 190), model.current.voice.base_pitch_hz);
     try std.testing.expectEqualStrings("モーバス", text[0..length]);
     try std.testing.expectEqual(@as(f32, 950), model.profiles[@backingInt(v.phoneme.PhonemeId.o)].?.formants[0].frequency_hz);
+    // Phase 5 had 41 profile slots and no targets or evaluation records.
+    const legacy = try std.json.Stringify.valueAlloc(std.testing.allocator, .{
+        .version = @as(u8, 1),
+        .english = false,
+        .voice = model.current.voice,
+        .events = model.current.events[0..model.current.len],
+        .profiles = model.profiles[0..41],
+        .text = text[0..length],
+    }, .{});
+    defer std.testing.allocator.free(legacy);
+    const old = fopen("/tmp/mimoc-v1-session.json", "wb") orelse return error.OpenFailed;
+    try std.testing.expectEqual(legacy.len, fwrite(legacy.ptr, 1, legacy.len, old));
+    _ = fclose(old);
+    try loadSessionFrom("/tmp/mimoc-v1-session.json");
+    try std.testing.expectEqual(@as(f32, 190), model.current.voice.base_pitch_hz);
+    try std.testing.expectEqualStrings("モーバス", text[0..length]);
+    try std.testing.expectEqual(model.current.events[1].duration_ms, model.current.targets[1].duration_ms);
+    try std.testing.expectEqual(@as(f32, 950), model.current.targets[1].formants_body[0].frequency_hz);
     const f = fopen("/tmp/mimoc-invalid-session.json", "wb") orelse return error.OpenFailed;
     const bad = "{}";
     _ = fwrite(bad.ptr, 1, bad.len, f);

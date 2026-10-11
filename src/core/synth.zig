@@ -22,6 +22,7 @@ pub const Synth = struct {
     last_y: f32 = 0,
     peak: f32 = 0,
     dc_mean: f32 = 0,
+    numerical_faults: usize = 0,
     pub fn init(config: Config) !Synth {
         const v = config.voice;
         if (config.sample_rate < 8000 or config.sample_rate > 96000 or !std.math.isFinite(v.speed) or v.speed < 0.25 or v.speed > 4 or !std.math.isFinite(v.base_pitch_hz) or v.base_pitch_hz < 40 or v.base_pitch_hz > 600 or !std.math.isFinite(v.amplitude) or v.amplitude < 0 or v.amplitude > 1 or !std.math.isFinite(v.breath) or v.breath < 0 or v.breath > 1 or !std.math.isFinite(v.formant_scale) or v.formant_scale < 0.5 or v.formant_scale > 2) return error.InvalidConfig;
@@ -81,7 +82,17 @@ pub const Synth = struct {
             y *= amplitude * e.gain * self.config.voice.amplitude * 2;
             if (self.config.envelope_mode == .legacy_double) y *= env;
             // DC blocker followed by bounded soft limiting; no integer saturation/clipping.
-            const dc = y - self.last_x + 0.995 * self.last_y;
+            var dc = y - self.last_x + 0.995 * self.last_y;
+            // Recover without converting NaN/Inf to i16; adapters must report the fault counter.
+            if (!std.math.isFinite(y) or !std.math.isFinite(dc)) {
+                self.numerical_faults += 1;
+                self.filters = .{ .{}, .{}, .{} };
+                self.noise_filter = .{};
+                self.noise_low = 0;
+                self.dc_mean = 0;
+                y = 0;
+                dc = 0;
+            }
             self.last_x = y;
             self.last_y = dc;
             self.peak = @max(self.peak, @abs(dc));
@@ -167,4 +178,18 @@ test "render single envelope endpoints deterministic diphthong and partial chunk
     try c.enqueue(&stationary);
     _ = c.render(&y);
     try std.testing.expect(!std.mem.eql(i16, &x, &y));
+}
+
+test "nonfinite DSP state recovers without panic and is explicitly reported" {
+    const events = [_]@import("event.zig").PhonemeEvent{.{ .phoneme = .a }};
+    var targets: [1]T = undefined;
+    _ = try @import("../planner/planner.zig").plan(&events, &targets, .{});
+    var s = try Synth.init(.{});
+    try s.enqueue(&targets);
+    s.filters[0].y1 = std.math.inf(f32);
+    var out: [8]i16 = undefined;
+    try std.testing.expectEqual(out.len, s.render(&out));
+    try std.testing.expectEqual(@as(usize, 1), s.numerical_faults);
+    try std.testing.expectEqual(@as(i16, 0), out[0]);
+    try std.testing.expect(std.math.isFinite(s.last_y));
 }

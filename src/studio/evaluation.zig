@@ -1,6 +1,6 @@
 const std = @import("std");
 const v = @import("../root.zig");
-pub const Record = struct { session_index: u32, phrase: []const u8, language: v.planner.Language, voice_preset: []const u8, voice: v.voice.Voice, envelope: v.synth.EnvelopeMode, parameter_snapshot: []const v.target.AcousticTarget, intelligibility: u8, heard_as: []const u8, problem: []const u8, hypothesis: []const u8, decision: enum { pending, keep, revert } = .pending };
+pub const Record = struct { session_index: u32, scope: v.studio_model.Scope = .whole, selected: usize = 0, phrase: []const u8, language: v.planner.Language, voice_preset: []const u8, voice: v.voice.Voice, envelope: v.synth.EnvelopeMode, parameter_snapshot: []const v.target.AcousticTarget, intelligibility: u8, heard_as: []const u8, problem: []const u8, hypothesis: []const u8, decision: enum { pending, keep, revert } = .pending };
 pub const Comparison = struct { phrase: []const u8, language: v.planner.Language, hypothesis: []const u8, scope: []const u8, selected: usize, voice_a: v.voice.Voice, voice_b: v.voice.Voice, envelope_a: v.synth.EnvelopeMode, envelope_b: v.synth.EnvelopeMode, targets_a: []const v.target.AcousticTarget, targets_b: []const v.target.AcousticTarget, trials: []const v.studio_blind.Trial };
 pub const Store = struct {
     allocator: std.mem.Allocator,
@@ -30,8 +30,9 @@ pub const Store = struct {
         self.comparisons.deinit(self.allocator);
     }
     pub fn append(self: *Store, input: Record) !void {
+        if (input.scope != .whole and input.selected >= input.parameter_snapshot.len) return error.InvalidSelection;
         if (input.intelligibility < 1 or input.intelligibility > 5) return error.InvalidScore;
-        if (input.parameter_snapshot.len > 512 or input.phrase.len > 1024 or input.problem.len > 512 or input.heard_as.len > 256 or input.hypothesis.len > 256 or self.records.items.len >= 256) return error.EvaluationCapacity;
+        if (input.parameter_snapshot.len > 512 or input.phrase.len > 1024 or input.voice_preset.len > 64 or input.problem.len > 512 or input.heard_as.len > 256 or input.hypothesis.len > 256 or self.records.items.len >= 256) return error.EvaluationCapacity;
         _ = try v.synth.Synth.init(.{ .voice = input.voice, .envelope_mode = input.envelope });
         for (input.parameter_snapshot) |t| try v.target.validate(t);
         const a = self.allocator;
@@ -52,6 +53,11 @@ pub const Store = struct {
     }
     pub fn appendComparison(self: *Store, input: Comparison) !void {
         if (self.comparisons.items.len >= 128 or input.targets_a.len > 512 or input.targets_b.len > 512 or input.trials.len > 128 or input.phrase.len > 1024 or input.hypothesis.len > 256 or input.scope.len > 64) return error.EvaluationCapacity;
+        _ = try v.synth.Synth.init(.{ .voice = input.voice_a, .envelope_mode = input.envelope_a });
+        _ = try v.synth.Synth.init(.{ .voice = input.voice_b, .envelope_mode = input.envelope_b });
+        const scope = std.meta.stringToEnum(v.studio_model.Scope, input.scope) orelse return error.InvalidScope;
+        if (scope != .whole and (input.selected >= input.targets_a.len or input.selected >= input.targets_b.len)) return error.InvalidSelection;
+        for (input.trials, 0..) |trial, i| if (trial.index != i + 1) return error.InvalidTrialIndex;
         for (input.targets_a) |t| try v.target.validate(t);
         for (input.targets_b) |t| try v.target.validate(t);
         const a = self.allocator;

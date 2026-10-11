@@ -43,6 +43,7 @@ pub fn plan(events: []const E, out: []AcousticTarget, options: Options) ![]Acous
 }
 pub fn planWithTiming(events: []const E, out: []AcousticTarget, options: Options, timing: Timing) ![]AcousticTarget {
     if (out.len < events.len) return error.NoSpace;
+    for ([_]u16{ timing.schwa, timing.short_vowel, timing.stressed_vowel, timing.diphthong, timing.fricative, timing.approximant, timing.plosive, timing.nasal, timing.affricate }) |ms| if (ms == 0 or ms > 5000) return error.InvalidTiming;
     for (events, 0..) |e, i| {
         const alias: P.PhonemeId = if (!options.english_vowels and options.language == .en) switch (e.phoneme) {
             .iy => .i,
@@ -58,7 +59,7 @@ pub fn planWithTiming(events: []const E, out: []AcousticTarget, options: Options
         const ms = duration(e, prev, next, options, timing);
         const stressed = options.stress_prosody and options.language == .en and e.stress > 0;
         const weak = options.language == .en and e.phoneme == .schwa and e.stress == 0;
-        out[i] = .{ .phoneme = e.phoneme, .duration_ms = ms, .pitch_start_scale = e.pitch_scale * (if (stressed) @as(f32, 1.12) else 1), .pitch_end_scale = e.pitch_end_scale * (if (stressed) @as(f32, 1.06) else 1), .pitch_start_hz = e.pitch_hz, .pitch_end_hz = e.pitch_end_hz, .amplitude_start = if (weak) 0.65 else if (stressed) 1.12 else 1, .amplitude_end = if (weak) 0.65 else if (stressed) 1.05 else 1, .formants_start = q.formants, .formants_body = q.formants, .formants_end = if (P.diphthong(e.phoneme) and options.dynamic_vowels) V.endFormants(e.phoneme) else q.formants, .glide = P.diphthong(e.phoneme) and options.dynamic_vowels, .voicing = if (q.voiced) 1 else 0, .noise = q.noise, .gain = q.gain, .attack_ms = q.attack_ms, .release_ms = q.release_ms, .stress = e.stress };
+        out[i] = .{ .phoneme = e.phoneme, .duration_ms = ms, .pitch_start_scale = e.pitch_scale * (if (stressed) @as(f32, 1.12) else 1), .pitch_end_scale = e.pitch_end_scale * (if (stressed) @as(f32, 1.06) else 1), .pitch_start_hz = e.pitch_hz, .pitch_end_hz = if (e.pitch_end_hz != 0) e.pitch_end_hz else if (e.pitch_hz != 0) @intFromFloat(@as(f32, @floatFromInt(e.pitch_hz)) * 0.94) else 0, .amplitude_start = if (weak) 0.65 else if (stressed) 1.12 else 1, .amplitude_end = if (weak) 0.65 else if (stressed) 1.05 else 1, .formants_start = q.formants, .formants_body = q.formants, .formants_end = if (P.diphthong(e.phoneme) and options.dynamic_vowels) (q.formants_end orelse V.endFormants(e.phoneme)) else q.formants, .glide = P.diphthong(e.phoneme) and options.dynamic_vowels, .voicing = if (q.voiced) 1 else 0, .noise = q.noise, .gain = q.gain, .attack_ms = q.attack_ms, .release_ms = q.release_ms, .stress = e.stress };
         if (options.context_transitions) {
             out[i].transition_in_ms = if (prev) |p| transition(p.phoneme, e.phoneme) else 0;
         } else out[i].transition_in_ms = 25;
@@ -145,4 +146,17 @@ test "caller capacity invalid and explicit timing" {
     const t = try plan(&e, &out, .{ .language = .en });
     try std.testing.expectEqual(@as(u16, 321), t[0].duration_ms);
     try std.testing.expectError(error.NoSpace, plan(&e, out[0..0], .{}));
+}
+
+test "English vowel tables independent and all diphthongs dynamic" {
+    const jp = [_]P.PhonemeId{ .i, .u, .e, .a, .o };
+    const en = [_]P.PhonemeId{ .iy, .uw, .eh, .aa, .ao };
+    for (jp, en) |j, e| try std.testing.expect(!std.meta.eql(V.parameters(j).formants, V.parameters(e).formants));
+    for ([_]P.PhonemeId{ .ey, .ay, .oy, .ow, .aw }) |p| {
+        const es = [_]E{.{ .phoneme = p, .timing = .automatic }};
+        var targets: [1]AcousticTarget = undefined;
+        _ = try plan(&es, &targets, .{ .language = .en });
+        try std.testing.expect(targets[0].glide);
+        try std.testing.expect(!std.meta.eql(targets[0].formants_body, targets[0].formants_end));
+    }
 }

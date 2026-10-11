@@ -44,3 +44,6 @@ test {
     _ = studio_blind;
     _ = evaluation;
 }
+test {
+    _ = @import("diagnostic/tests.zig");
+}

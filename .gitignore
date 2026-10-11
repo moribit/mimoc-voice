@@ -4,3 +4,4 @@ zig-out/
 *.pbm
 .DS_Store
 voice-session.json
+__pycache__/

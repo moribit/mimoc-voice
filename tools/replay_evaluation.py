@@ -23,6 +23,7 @@ def main():
             p.error("record index out of range")
         r = session["evaluations"][args.record - 1]
         targets, voice, envelope = r["parameter_snapshot"], r["voice"], r["envelope"]
+        selected, scope = r.get("selected", 0), r.get("scope", "whole")
     else:
         if not 1 <= args.comparison <= len(session.get("comparisons", [])):
             p.error("comparison index out of range")
@@ -30,12 +31,12 @@ def main():
         side = args.side.lower()
         targets, voice, envelope = r["targets_" + side], r["voice_" + side], r["envelope_" + side]
         selected, scope = r["selected"], r["scope"]
-        if scope != "whole":
-            if not 0 <= selected < len(targets):
-                p.error("invalid archived selection")
-            start = max(0, selected - 1) if scope in ("previous_selected", "context") else selected
-            end = min(len(targets), selected + 2) if scope in ("selected_next", "context") else selected + 1
-            targets = targets[start:end]
+    if scope != "whole":
+        if not 0 <= selected < len(targets):
+            p.error("invalid archived selection")
+        start = max(0, selected - 1) if scope in ("previous_selected", "context") else selected
+        end = min(len(targets), selected + 2) if scope in ("selected_next", "context") else selected + 1
+        targets = targets[start:end]
     document = dict(synth=dict(sample_rate=16000, voice=voice, envelope_mode=envelope), targets=targets)
     with tempfile.TemporaryDirectory(prefix="mimoc-replay-") as directory:
         path = pathlib.Path(directory) / "targets.json"

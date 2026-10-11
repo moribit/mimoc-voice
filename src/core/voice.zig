@@ -2,7 +2,7 @@ const P = @import("phoneme.zig").PhonemeId;
 pub const Formant = struct { frequency_hz: f32, bandwidth_hz: f32 = 100, gain: f32 = 1 };
 pub const Waveform = enum { sawtooth, pulse, glottal };
 pub const Voice = struct { base_pitch_hz: f32 = 125, speed: f32 = 1, amplitude: f32 = 0.7, breath: f32 = 0.035, formant_scale: f32 = 1, waveform: Waveform = .glottal };
-pub const Parameters = struct { formants: [3]Formant, voiced: bool = true, noise: f32 = 0, gain: f32 = 1, attack_ms: f32 = 8, release_ms: f32 = 12 };
+pub const Parameters = struct { formants: [3]Formant, formants_end: ?[3]Formant = null, voiced: bool = true, noise: f32 = 0, gain: f32 = 1, attack_ms: f32 = 8, release_ms: f32 = 12 };
 fn f(a: f32, b: f32, c: f32) [3]Formant {
     return .{ .{ .frequency_hz = a, .bandwidth_hz = 80, .gain = 1 }, .{ .frequency_hz = b, .bandwidth_hz = 110, .gain = 0.65 }, .{ .frequency_hz = c, .bandwidth_hz = 160, .gain = 0.35 } };
 }

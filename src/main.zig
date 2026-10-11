@@ -135,10 +135,21 @@ pub fn main(init: std.process.Init) !void {
         try v.wav.exportFile(name[0..path.len :0], &synth);
         std.debug.print("Saved {s}\n", .{path});
     }
-    if (metadata) |output| try writeMetadata(output, input, options, config, seq.events(), planned, range, synth.peak);
+    if (metadata) |output| try writeMetadata(output, input, options, config, seq.events(), planned, range, synth.peak, synth.numerical_faults);
 }
 fn usage() void {
-    std.debug.print("mimoc-voice synth|play --lang ja|en \"text\" [-o voice.wav] [--rate 16000] [--preset Retro]\nmimoc-voice synth-phoneme a -o a.wav\nmimoc-voice bench\n", .{});
+    std.debug.print(
+        \\mimoc-voice synth|play --lang ja|en "text" [-o voice.wav] [--rate 16000] [--preset Retro]
+        \\mimoc-voice synth-phoneme a -o a.wav
+        \\mimoc-voice synth-sequence "h schwa l ow" --lang en -o sequence.wav
+        \\mimoc-voice render-targets plan.json -o replay.wav
+        \\Diagnostic: --targets plan.json --scope whole|selected|previous_selected|selected_next|context --selected 2
+        \\Factors: --envelope single|legacy_double --timing context|fixed --transitions context|fixed
+        \\         --noise shaped|legacy --glide on|off --vowels english|japanese_approx --stress on|off
+        \\Frozen references (export only): --reference phase5|envelope_single
+        \\mimoc-voice bench
+        \\
+    , .{});
 }
 
 fn setting(value: []const u8, on: []const u8, off: []const u8) !bool {
@@ -161,8 +172,11 @@ fn zpath(path: []const u8, out: []u8) ![:0]u8 {
 extern fn fopen([*:0]const u8, [*:0]const u8) ?*anyopaque;
 extern fn fwrite([*]const u8, usize, usize, *anyopaque) usize;
 extern fn fclose(*anyopaque) c_int;
-fn writeMetadata(path: []const u8, input: []const u8, options: v.planner.Options, config: v.synth.Config, events: []const v.event.PhonemeEvent, targets: []const v.target.AcousticTarget, range: Range, peak: f32) !void {
-    const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, .{ .schema = 1, .input = input, .planner = options, .synth = config, .events = events, .targets = targets[range.start..range.end], .range = range, .internal_peak = peak }, .{ .whitespace = .indent_2 });
+fn writeMetadata(path: []const u8, input: []const u8, options: v.planner.Options, config: v.synth.Config, events: []const v.event.PhonemeEvent, targets: []const v.target.AcousticTarget, range: Range, peak: f32, faults: usize) !void {
+    var counts: [2048]usize = undefined;
+    const synth = try v.synth.Synth.init(config);
+    for (targets[range.start..range.end], 0..) |t, i| counts[i] = synth.frames(t);
+    const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, .{ .schema = 1, .input = input, .planner = options, .synth = config, .events = events, .targets = targets[range.start..range.end], .range = range, .internal_peak = peak, .numerical_faults = faults, .frame_counts = counts[0 .. range.end - range.start] }, .{ .whitespace = .indent_2 });
     defer std.heap.page_allocator.free(bytes);
     var name: [4096]u8 = undefined;
     const f = fopen(try zpath(path, &name), "wb") orelse return error.OpenFailed;
@@ -204,13 +218,20 @@ fn renderReference(reference: []const u8, input: []const u8, lang: []const u8, s
 }
 
 extern fn fread([*]u8, usize, usize, *anyopaque) usize;
+extern fn fseek(*anyopaque, c_long, c_int) c_int;
+extern fn ftell(*anyopaque) c_long;
 fn replayTargets(input: []const u8, output: []const u8) !void {
     var path: [4096]u8 = undefined;
     const file = fopen(try zpath(input, &path), "rb") orelse return error.OpenFailed;
     defer _ = fclose(file);
-    var bytes: [1024 * 1024]u8 = undefined;
-    const count = fread(&bytes, 1, bytes.len, file);
-    if (count == bytes.len) return error.TargetFileTooLarge;
+    if (fseek(file, 0, 2) != 0) return error.ReadFailed;
+    const size = ftell(file);
+    if (size < 0 or fseek(file, 0, 0) != 0) return error.ReadFailed;
+    if (size > 64 * 1024 * 1024) return error.TargetFileTooLarge;
+    const bytes = try std.heap.page_allocator.alloc(u8, @intCast(size));
+    defer std.heap.page_allocator.free(bytes);
+    const count = fread(bytes.ptr, 1, bytes.len, file);
+    if (count != bytes.len) return error.ReadFailed;
     const Replay = struct { synth: v.synth.Config, targets: []const v.target.AcousticTarget };
     const parsed = try std.json.parseFromSlice(Replay, std.heap.page_allocator, bytes[0..count], .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
