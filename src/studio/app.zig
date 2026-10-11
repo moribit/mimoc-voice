@@ -351,8 +351,13 @@ fn saveSessionTo(path: [*:0]const u8) !void {
     const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, Session{ .english = model.english, .voice = model.current.voice, .events = model.current.events[0..model.current.len], .profiles = model.profiles, .text = text[0..length] }, .{ .whitespace = .indent_2 });
     defer std.heap.page_allocator.free(bytes);
     const f = fopen(path, "wb") orelse return error.OpenFailed;
-    defer _ = fclose(f);
+    var closed = false;
+    defer if (!closed) {
+        _ = fclose(f);
+    };
     if (fwrite(bytes.ptr, 1, bytes.len, f) != bytes.len) return error.WriteFailed;
+    closed = true;
+    if (fclose(f) != 0) return error.WriteFailed;
     status = "Saved voice-session.json";
 }
 fn loadSession() !void {
@@ -469,6 +474,7 @@ test "six required phrases via Studio input play stop and WAV export" {
             _ = usleep(10000);
         }
         try std.testing.expect(player.done());
+        try std.testing.expect(audio.finished());
         try click(8);
         try std.testing.expect(player.handle == null);
         try exportTo(case.path);
