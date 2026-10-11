@@ -1,0 +1,7 @@
+.{
+    .name = .mimoc_voice,
+    .version = "0.1.0",
+    .fingerprint = 0x1f8dd2f16ad2b40a,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{ "build.zig", "build.zig.zon", "src", "tools", "docs", "README.md" },
+}

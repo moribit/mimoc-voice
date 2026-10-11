@@ -1,0 +1,222 @@
+[
+  {
+    "language": "ja",
+    "text": "アイウエオ",
+    "file": "ja-01.wav",
+    "frames": 11200,
+    "seconds": 0.7,
+    "peak": 9853,
+    "dc": -8.19,
+    "max_adjacent_delta": 2651
+  },
+  {
+    "language": "ja",
+    "text": "コンニチワ",
+    "file": "ja-02.wav",
+    "frames": 11200,
+    "seconds": 0.7,
+    "peak": 9938,
+    "dc": -7.0,
+    "max_adjacent_delta": 6573
+  },
+  {
+    "language": "ja",
+    "text": "オハヨウ",
+    "file": "ja-03.wav",
+    "frames": 8960,
+    "seconds": 0.56,
+    "peak": 9781,
+    "dc": -7.43,
+    "max_adjacent_delta": 4360
+  },
+  {
+    "language": "ja",
+    "text": "モーバス",
+    "file": "ja-04.wav",
+    "frames": 8960,
+    "seconds": 0.56,
+    "peak": 9111,
+    "dc": -1.85,
+    "max_adjacent_delta": 5558
+  },
+  {
+    "language": "ja",
+    "text": "メッセージ",
+    "file": "ja-05.wav",
+    "frames": 11200,
+    "seconds": 0.7,
+    "peak": 9891,
+    "dc": -10.89,
+    "max_adjacent_delta": 5568
+  },
+  {
+    "language": "ja",
+    "text": "セツゾク",
+    "file": "ja-06.wav",
+    "frames": 8960,
+    "seconds": 0.56,
+    "peak": 8033,
+    "dc": -7.69,
+    "max_adjacent_delta": 5642
+  },
+  {
+    "language": "ja",
+    "text": "バッテリー",
+    "file": "ja-07.wav",
+    "frames": 11200,
+    "seconds": 0.7,
+    "peak": 9906,
+    "dc": -6.17,
+    "max_adjacent_delta": 4084
+  },
+  {
+    "language": "ja",
+    "text": "エラー",
+    "file": "ja-08.wav",
+    "frames": 6720,
+    "seconds": 0.42,
+    "peak": 5521,
+    "dc": -6.46,
+    "max_adjacent_delta": 480
+  },
+  {
+    "language": "en",
+    "text": "hello",
+    "file": "en-01.wav",
+    "frames": 5440,
+    "seconds": 0.34,
+    "peak": 7125,
+    "dc": -7.7,
+    "max_adjacent_delta": 4330
+  },
+  {
+    "language": "en",
+    "text": "hello world",
+    "file": "en-02.wav",
+    "frames": 11120,
+    "seconds": 0.695,
+    "peak": 9827,
+    "dc": -5.03,
+    "max_adjacent_delta": 4330
+  },
+  {
+    "language": "en",
+    "text": "system ready",
+    "file": "en-03.wav",
+    "frames": 13840,
+    "seconds": 0.865,
+    "peak": 9917,
+    "dc": -4.44,
+    "max_adjacent_delta": 6669
+  },
+  {
+    "language": "en",
+    "text": "message received",
+    "file": "en-04.wav",
+    "frames": 14800,
+    "seconds": 0.925,
+    "peak": 9953,
+    "dc": -6.95,
+    "max_adjacent_delta": 6690
+  },
+  {
+    "language": "en",
+    "text": "battery low",
+    "file": "en-05.wav",
+    "frames": 10960,
+    "seconds": 0.685,
+    "peak": 10202,
+    "dc": -7.12,
+    "max_adjacent_delta": 3817
+  },
+  {
+    "language": "en",
+    "text": "network connected",
+    "file": "en-06.wav",
+    "frames": 18480,
+    "seconds": 1.155,
+    "peak": 9803,
+    "dc": -3.25,
+    "max_adjacent_delta": 4080
+  },
+  {
+    "language": "en",
+    "text": "device disconnected",
+    "file": "en-07.wav",
+    "frames": 22960,
+    "seconds": 1.435,
+    "peak": 9911,
+    "dc": -5.23,
+    "max_adjacent_delta": 5418
+  },
+  {
+    "language": "en",
+    "text": "warning",
+    "file": "en-08.wav",
+    "frames": 7360,
+    "seconds": 0.46,
+    "peak": 9827,
+    "dc": -6.67,
+    "max_adjacent_delta": 2188
+  },
+  {
+    "language": "en",
+    "text": "system error",
+    "file": "en-09.wav",
+    "frames": 12880,
+    "seconds": 0.805,
+    "peak": 9326,
+    "dc": -2.41,
+    "max_adjacent_delta": 6669
+  },
+  {
+    "language": "phoneme",
+    "text": "a",
+    "file": "vowel-a.wav",
+    "frames": 8000,
+    "seconds": 0.5,
+    "peak": 3474,
+    "dc": 0.2,
+    "max_adjacent_delta": 320
+  },
+  {
+    "language": "phoneme",
+    "text": "i",
+    "file": "vowel-i.wav",
+    "frames": 8000,
+    "seconds": 0.5,
+    "peak": 9916,
+    "dc": -5.07,
+    "max_adjacent_delta": 2081
+  },
+  {
+    "language": "phoneme",
+    "text": "u",
+    "file": "vowel-u.wav",
+    "frames": 8000,
+    "seconds": 0.5,
+    "peak": 7858,
+    "dc": -2.95,
+    "max_adjacent_delta": 1270
+  },
+  {
+    "language": "phoneme",
+    "text": "e",
+    "file": "vowel-e.wav",
+    "frames": 8000,
+    "seconds": 0.5,
+    "peak": 5099,
+    "dc": -0.27,
+    "max_adjacent_delta": 546
+  },
+  {
+    "language": "phoneme",
+    "text": "o",
+    "file": "vowel-o.wav",
+    "frames": 8000,
+    "seconds": 0.5,
+    "peak": 5732,
+    "dc": -0.62,
+    "max_adjacent_delta": 582
+  }
+]
