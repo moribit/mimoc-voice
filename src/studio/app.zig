@@ -24,6 +24,30 @@ var drag_previous: v.studio_model.Snapshot = .{};
 var labels: [100][100]u8 = undefined;
 var label_count: usize = 0;
 var error_label: [128]u8 = undefined;
+const Tab = enum { phoneme, trajectory, diagnostic, evaluation };
+var tab: Tab = .phoneme;
+var evaluation_store = v.evaluation.Store.init(std.heap.page_allocator);
+var pending_blind: ?v.studio_blind.Choice = null;
+var comparison_saved_trials: usize = 0;
+var heard: [256]u8 = undefined;
+var heard_len: usize = 0;
+var heard_cursor: usize = 0;
+var problem: [512]u8 = undefined;
+var problem_len: usize = 0;
+var problem_cursor: usize = 0;
+var hypothesis: [256]u8 = undefined;
+var hypothesis_len: usize = 0;
+var hypothesis_cursor: usize = 0;
+var evaluation_score: u8 = 3;
+var decision: @FieldType(v.evaluation.Record, "decision") = .pending;
+var heard_field = m.text_edit.Field{ .placeholder = "What did you hear?" };
+var problem_field = m.text_edit.Field{ .placeholder = "Unclear phoneme / transition" };
+var hypothesis_field = m.text_edit.Field{ .placeholder = "One hypothesis / one change" };
+const advanced_names = [_][]const u8{ "Duration ms", "Pitch start Hz", "Pitch end Hz", "Amplitude start", "Amplitude end", "Voicing", "F1 start Hz", "F1 end Hz", "F2 start Hz", "F2 end Hz", "F3 start Hz", "F3 end Hz", "Transition in ms", "Transition out ms", "Stress label" };
+const advanced_index = [_]usize{ 0, 1, 20, 21, 22, 23, 24, 27, 25, 28, 26, 29, 30, 31, 32 };
+const advanced_step = [_]f32{ 10, 5, 5, 0.05, 0.05, 0.05, 25, 25, 25, 25, 25, 25, 5, 5, 1 };
+const page_size = 8;
+const scope_names = [_][]const u8{ "Whole phrase", "Selected", "Previous + selected", "Selected + next", "Previous + selected + next" };
 const voice_names = [_][]const u8{ "Pitch Hz", "Speed", "Breath", "Formant scale", "Amplitude" };
 const voice_min = [_]f32{ 40, 0.25, 0, 0.5, 0 };
 const voice_max = [_]f32{ 400, 4, 1, 2, 1 };
@@ -59,16 +83,16 @@ fn rebuild() void {
     buttonAt(&ui, 4, if (model.english) "[English]" else "English", 140, 45, false);
     ui.textField(2, &field, .{ .size = .{ .w = 600, .h = 30 }, .offset = .{ .x = 20, .y = 80 } });
     buttonAt(&ui, 6, "Play B", 20, 125, !valid or model.current.len == 0);
-    buttonAt(&ui, 7, "Play A", 110, 125, !model.has_previous or model.previous.len == 0);
+    buttonAt(&ui, 7, "Play A", 110, 125, if (model.has_pinned) model.pinned.len == 0 else !model.has_previous or model.previous.len == 0);
     buttonAt(&ui, 8, "Stop", 200, 125, false);
     buttonAt(&ui, 9, "Export WAV", 280, 125, !valid or model.current.len == 0);
-    buttonAt(&ui, 10, "Play selected", 440, 125, model.current.len == 0);
+    buttonAt(&ui, 10, "Play scope", 440, 125, model.current.len == 0);
     textAt(&ui, 22, "PHONEME TIMELINE", 20, 162);
     buttonAt(&ui, 110, "<", 540, 158, page == 0);
-    buttonAt(&ui, 111, ">", 580, 158, (page + 1) * 12 >= model.current.len);
-    const begin = page * 12;
-    for (begin..@min(begin + 12, model.current.len)) |i| {
-        buttonAt(&ui, @intCast(1000 + i - begin), label(ifFormat(), .{ if (model.selected == i) "[" else "", @tagName(model.current.events[i].phoneme), if (model.selected == i) "]" else "" }), @intCast(20 + (i - begin) * 50), 190, false);
+    buttonAt(&ui, 111, ">", 580, 158, (page + 1) * page_size >= model.current.len);
+    const begin = page * page_size;
+    for (begin..@min(begin + page_size, model.current.len)) |i| {
+        buttonAt(&ui, @intCast(1000 + i - begin), label(ifFormat(), .{ if (model.selected == i) "[" else "", @tagName(model.current.events[i].phoneme), if (model.selected == i) "]" else "" }), @intCast(20 + (i - begin) * 72), 190, false);
     }
     textAt(&ui, 23, label("{d} phonemes / {d:.2}s", .{ model.current.len, @as(f32, @floatFromInt(model.total_frames)) / 16000 }), 20, 223);
     textAt(&ui, 24, "VOICE", 20, 250);
@@ -90,19 +114,81 @@ fn rebuild() void {
     textAt(&ui, 28, status, 20, 677);
     textAt(&ui, 60, "PHONEME INSPECTOR", 660, 16);
     textAt(&ui, 61, if (model.selectedEvent()) |e| label("Selected {d}: {s}", .{ model.selected + 1, @tagName(e.phoneme) }) else "No phoneme", 660, 45);
-    if (model.selectedParameters()) |q| buttonAt(&ui, 62, if (q.voiced) "Voiced [ON]" else "Voiced [OFF]", 660, 78, false);
-    for (0..inspector_names.len) |i| {
-        const y: i16 = @intCast(115 + i * 28);
-        textAt(&ui, @intCast(400 + i), inspector_names[i], 660, y);
-        textAt(&ui, @intCast(420 + i), label("{d:.2}", .{model.inspectorValue(i)}), 815, y);
-        buttonAt(&ui, @intCast(300 + i * 2), "-", 900, y - 2, model.current.len == 0);
-        buttonAt(&ui, @intCast(301 + i * 2), "+", 940, y - 2, model.current.len == 0);
+    if (model.current.len > 0) {
+        const i = model.selected;
+        const prev = if (i > 0) @tagName(model.current.targets[i - 1].phoneme) else "-";
+        const next = if (i + 1 < model.current.len) @tagName(model.current.targets[i + 1].phoneme) else "-";
+        textAt(&ui, 68, label("{s} -> {s} -> {s}", .{ prev, @tagName(model.current.targets[i].phoneme), next }), 660, 66);
     }
-    buttonAt(&ui, 63, "Store phoneme profile", 660, 550, model.current.len == 0);
-    buttonAt(&ui, 64, "Undo / swap A-B", 660, 586, !model.has_previous);
-    buttonAt(&ui, 65, "Save session", 660, 622, false);
-    buttonAt(&ui, 66, "Load session", 825, 622, false);
-    textAt(&ui, 67, "A: previous / B: current", 660, 677);
+    for ([_][]const u8{ "Phoneme", "Trajectory", "Diagnostic", "Human log" }, 0..) |name, i| buttonAt(&ui, @intCast(80 + i), label("{s}{s}{s}", .{ if (@backingInt(tab) == i) "[" else "", name, if (@backingInt(tab) == i) "]" else "" }), @intCast(660 + i * 108), 92, false);
+    switch (tab) {
+        .phoneme, .trajectory => {
+            if (model.selectedTarget()) |t| buttonAt(&ui, 62, if (t.voicing > 0.5) "Voiced [ON]" else "Voiced [OFF]", 660, 128, false);
+            const names = if (tab == .phoneme) &inspector_names else &advanced_names;
+            for (0..15) |i| {
+                const index = if (tab == .phoneme) i else advanced_index[i];
+                const y: i16 = @intCast(165 + i * 28);
+                textAt(&ui, @intCast(400 + i), names[i], 660, y);
+                textAt(&ui, @intCast(420 + i), label("{d:.2}", .{model.inspectorValue(index)}), 845, y);
+                buttonAt(&ui, @intCast(300 + i * 2), "-", 940, y - 2, model.current.len == 0);
+                buttonAt(&ui, @intCast(301 + i * 2), "+", 980, y - 2, model.current.len == 0);
+            }
+            textAt(&ui, 69, if (tab == .trajectory) "Stress label only; edit timing/prosody separately" else "Body formants / shared bandwidth and gains", 660, 601);
+            buttonAt(&ui, 63, "Store phoneme profile", 660, 632, model.current.len == 0);
+            buttonAt(&ui, 64, "Undo / swap A-B", 850, 632, !model.has_previous);
+        },
+        .diagnostic => {
+            textAt(&ui, 69, "PLAYBACK SCOPE", 660, 132);
+            for (scope_names, 0..) |name, i| buttonAt(&ui, @intCast(120 + i), label("{s}{s}", .{ if (@backingInt(model.scope) == i) "* " else "", name }), 660, @intCast(159 + i * 26), model.current.len == 0);
+            buttonAt(&ui, 125, if (model.current.envelope_mode == .single) "Envelope: single" else "Envelope: double (diagnostic)", 660, 300, false);
+            buttonAt(&ui, 126, "Pin current as A", 660, 336, model.current.len == 0);
+            buttonAt(&ui, 127, "Start blind A/B", 850, 336, model.current.len == 0);
+            buttonAt(&ui, 128, "Play X", 660, 377, !model.blind.active);
+            buttonAt(&ui, 129, "Play Y", 775, 377, !model.blind.active);
+            textAt(&ui, 70, "Which is clearer?", 660, 411);
+            const no_vote = !model.blind.active or model.blind.revealed or !model.blind.heard_x or !model.blind.heard_y;
+            buttonAt(&ui, 130, "X", 660, 440, no_vote);
+            buttonAt(&ui, 131, "Y", 720, 440, no_vote);
+            buttonAt(&ui, 132, "Same", 780, 440, no_vote);
+            buttonAt(&ui, 133, "Reveal / finish", 890, 440, !model.blind.active);
+            textAt(&ui, 71, if (model.blind.revealed) label("New wins: {d}/{d} / old: {d} / same: {d}", .{ model.blind.new_wins, model.blind.len, model.blind.old_wins, model.blind.ties }) else label("Trial {d} / voted {d}; X/Y frozen", .{ model.blind.len + 1, model.blind.len }), 660, 480);
+            textAt(&ui, 72, "Audition both to completion before voting", 660, 510);
+            if (model.selectedTarget()) |t| buttonAt(&ui, 144, label("Noise shape: {s}", .{@tagName(t.noise_shape)}), 660, 651, false);
+            for ([_][]const u8{ "Closure ms", "Burst ms", "Noise center Hz", "Noise bandwidth" }, 0..) |name, i| {
+                const y: i16 = @intCast(545 + i * 26);
+                textAt(&ui, @intCast(450 + i), name, 660, y);
+                textAt(&ui, @intCast(460 + i), label("{d:.1}", .{model.inspectorValue(33 + i)}), 850, y);
+                buttonAt(&ui, @intCast(340 + i * 2), "-", 940, y - 2, model.current.len == 0);
+                buttonAt(&ui, @intCast(341 + i * 2), "+", 980, y - 2, model.current.len == 0);
+            }
+        },
+        .evaluation => {
+            textAt(&ui, 69, "HUMAN EVALUATION (no automatic quality score)", 660, 132);
+            textAt(&ui, 70, label("Intelligibility: {d}/5", .{evaluation_score}), 660, 168);
+            buttonAt(&ui, 134, "-", 860, 166, false);
+            buttonAt(&ui, 135, "+", 910, 166, false);
+            textAt(&ui, 71, "Heard as", 660, 208);
+            heard_field.text = heard[0..heard_len];
+            heard_field.cursor = heard_cursor;
+            ui.textField(140, &heard_field, .{ .offset = .{ .x = 660, .y = 233 }, .size = .{ .w = 430, .h = 30 } });
+            textAt(&ui, 72, "Problem note", 660, 282);
+            problem_field.text = problem[0..problem_len];
+            problem_field.cursor = problem_cursor;
+            ui.textField(141, &problem_field, .{ .offset = .{ .x = 660, .y = 307 }, .size = .{ .w = 430, .h = 30 } });
+            textAt(&ui, 73, "Single hypothesis / changed parameter", 660, 356);
+            hypothesis_field.text = hypothesis[0..hypothesis_len];
+            hypothesis_field.cursor = hypothesis_cursor;
+            ui.textField(142, &hypothesis_field, .{ .offset = .{ .x = 660, .y = 381 }, .size = .{ .w = 430, .h = 30 } });
+            buttonAt(&ui, 136, label("Decision: {s}", .{@tagName(decision)}), 660, 435, false);
+            buttonAt(&ui, 137, "Record evaluation", 660, 482, model.current.len == 0);
+            textAt(&ui, 74, label("Records: {d} / comparisons: {d}", .{ evaluation_store.records.items.len, evaluation_store.comparisons.items.len }), 660, 531);
+            textAt(&ui, 75, "Save session persists scores and parameter snapshots", 660, 563);
+            textAt(&ui, 76, "Keep/revert is a human decision; no auto adoption", 660, 597);
+        },
+    }
+    buttonAt(&ui, 65, "Save session", 660, 678, false);
+    buttonAt(&ui, 66, "Load session", 825, 678, false);
+    textAt(&ui, 67, "A: pinned / previous    B: current", 660, 720);
     root.end();
     ui.finishChecked() catch |err| {
         std.debug.print("UI build error: {s} / {?}\n", .{ @errorName(err), ui.diagnostic() });
@@ -156,21 +242,50 @@ fn setText(value: []const u8) void {
     cursor = length;
     refreshText();
 }
-fn play(snapshot: *const v.studio_model.Snapshot, selected: bool) !void {
-    player.stop();
-    playing = snapshot.*;
-    if (selected) {
-        playing.events[0] = snapshot.events[model.selected];
-        playing.targets[0] = snapshot.targets[model.selected];
-        playing.len = 1;
+fn finishAudition() void {
+    if (player.handle != null and player.done() and audio.finished()) {
+        if (pending_blind) |side| model.blind.markHeard(side);
+        pending_blind = null;
     }
+}
+fn playRange(snapshot: *const v.studio_model.Snapshot, scope: v.studio_model.Scope, selected: usize) !void {
+    finishAudition();
+    player.stop();
+    pending_blind = null;
+    const range = try v.studio_model.Model.range(snapshot, selected, scope);
+    playing = snapshot.*;
+    std.mem.copyForwards(v.event.PhonemeEvent, playing.events[0 .. range.end - range.start], snapshot.events[range.start..range.end]);
+    std.mem.copyForwards(v.target.AcousticTarget, playing.targets[0 .. range.end - range.start], snapshot.targets[range.start..range.end]);
+    playing.len = range.end - range.start;
     audio = try v.studio_model.Model.createSynth(&playing);
     try player.start(&audio);
-    status = if (selected) "Playing selected phoneme" else "Playing";
+    status = "Playing scope";
+}
+fn play(snapshot: *const v.studio_model.Snapshot, selected: bool) !void {
+    try playRange(snapshot, if (selected) model.scope else .whole, model.selected);
+}
+fn playBlind(side: v.studio_blind.Choice) !void {
+    if (!model.blind.active) return error.NoBlindTrial;
+    const newer = (side == .x) == model.blind.x_is_new;
+    try playRange(if (newer) &model.blind_b else &model.blind_a, model.blind_scope, model.blind_selected);
+    pending_blind = side;
+    status = if (side == .x) "Playing X" else "Playing Y";
+}
+extern fn arc4random() c_uint;
+fn archiveBlind() !void {
+    if (model.blind.len == 0 or comparison_saved_trials == model.blind.len) return;
+    try evaluation_store.appendComparison(.{ .phrase = model.blind_b.phrase[0..model.blind_b.phrase_len], .language = model.blind_b.language, .hypothesis = hypothesis[0..hypothesis_len], .scope = @tagName(model.blind_scope), .selected = model.blind_selected, .voice_a = model.blind_a.voice, .voice_b = model.blind_b.voice, .envelope_a = model.blind_a.envelope_mode, .envelope_b = model.blind_b.envelope_mode, .targets_a = model.blind_a.targets[0..model.blind_a.len], .targets_b = model.blind_b.targets[0..model.blind_b.len], .trials = model.blind.trials[0..model.blind.len] });
+    comparison_saved_trials = model.blind.len;
+}
+fn recordEvaluation() !void {
+    try evaluation_store.append(.{ .session_index = @intCast(evaluation_store.records.items.len + 1), .phrase = model.current.phrase[0..model.current.phrase_len], .language = model.current.language, .voice_preset = @tagName(model.current.preset), .voice = model.current.voice, .envelope = model.current.envelope_mode, .parameter_snapshot = model.current.targets[0..model.current.len], .intelligibility = evaluation_score, .heard_as = heard[0..heard_len], .problem = problem[0..problem_len], .hypothesis = hypothesis[0..hypothesis_len], .decision = decision });
+    status = "Evaluation recorded; Save session to persist";
 }
 extern fn voice_save_path([*]u8, usize) c_int;
 fn exportTo(path: [:0]const u8) !void {
-    var synth = try v.studio_model.Model.createSynth(&model.current);
+    var synth = try v.synth.Synth.init(.{ .voice = model.current.voice, .envelope_mode = model.current.envelope_mode });
+    const range = try v.studio_model.Model.range(&model.current, model.selected, model.scope);
+    try synth.enqueue(model.current.targets[range.start..range.end]);
     try v.wav.exportFile(path, &synth);
     status = "WAV exported";
 }
@@ -194,9 +309,11 @@ fn activate(logical: u16) !void {
             refreshText();
         },
         6 => try play(&model.current, false),
-        7 => try play(&model.previous, false),
+        7 => try play(if (model.has_pinned) &model.pinned else &model.previous, false),
         8 => {
+            finishAudition();
             player.stop();
+            pending_blind = null;
             status = "Stopped";
         },
         9 => try exportWav(),
@@ -204,6 +321,7 @@ fn activate(logical: u16) !void {
         30...34 => {
             model.remember();
             model.current.voice = v.voice.presets[logical - 30].voice;
+            model.current.preset = @fromBackingInt(@as(u3, @intCast(logical - 30)));
             try model.analyze();
         },
         62 => {
@@ -217,23 +335,80 @@ fn activate(logical: u16) !void {
         64 => try model.undo(),
         65 => try saveSession(),
         66 => try loadSession(),
-        1000...1011 => {
-            model.selected = page * 12 + logical - 1000;
+        1000...1007 => {
+            model.selected = page * page_size + logical - 1000;
         },
         110 => {
             if (page > 0) page -= 1;
         },
         111 => {
-            if ((page + 1) * 12 < model.current.len) page += 1;
+            if ((page + 1) * page_size < model.current.len) page += 1;
         },
         112, 113 => {},
         200...209 => {
             const i = (logical - 200) / 2;
             try model.editVoice(i, model.voiceValue(i) + (if (logical % 2 == 0) -voice_step[i] else voice_step[i]));
         },
+        80...83 => tab = @fromBackingInt(@as(u2, @intCast(logical - 80))),
+        120...124 => model.scope = @fromBackingInt(@as(u3, @intCast(logical - 120))),
+        125 => {
+            model.remember();
+            model.current.envelope_mode = if (model.current.envelope_mode == .single) .legacy_double else .single;
+            try model.analyze();
+        },
+        126 => {
+            model.pinA();
+            status = "Baseline A pinned; change one parameter for B";
+        },
+        127 => {
+            try archiveBlind();
+            try model.beginBlind(arc4random());
+            comparison_saved_trials = 0;
+            status = "Blind comparison frozen; audition X and Y";
+        },
+        128 => try playBlind(.x),
+        129 => try playBlind(.y),
+        130...132 => {
+            finishAudition();
+            try model.blind.vote(if (logical == 130) .x else if (logical == 131) .y else .same);
+            status = "Vote stored; next randomized trial ready";
+        },
+        133 => {
+            model.blind.revealed = true;
+            try archiveBlind();
+            status = "Blind results revealed";
+        },
+        144 => {
+            model.remember();
+            if (model.selectedTarget()) |t| {
+                t.noise_shape = switch (t.noise_shape) {
+                    .legacy => .broadband,
+                    .broadband => .high_pass,
+                    .high_pass => .band_pass,
+                    .band_pass => .aspiration,
+                    .aspiration => .legacy,
+                };
+                try model.analyze();
+            }
+        },
+        134 => evaluation_score = @max(1, evaluation_score -| 1),
+        135 => evaluation_score = @min(5, evaluation_score + 1),
+        136 => decision = switch (decision) {
+            .pending => .keep,
+            .keep => .revert,
+            .revert => .pending,
+        },
+        137 => try recordEvaluation(),
+        340...347 => {
+            const i = (logical - 340) / 2;
+            const step: @TypeOf(@as(f32, 0)) = if (i < 2) 5 else 100;
+            try model.editInspector(33 + i, model.inspectorValue(33 + i) + (if (logical % 2 == 0) -step else step));
+        },
         300...329 => {
-            const i = (logical - 300) / 2;
-            try model.editInspector(i, model.inspectorValue(i) + (if (logical % 2 == 0) -inspector_step[i] else inspector_step[i]));
+            const row = (logical - 300) / 2;
+            const i = if (tab == .trajectory) advanced_index[row] else row;
+            const step = if (tab == .trajectory) advanced_step[row] else inspector_step[row];
+            try model.editInspector(i, model.inspectorValue(i) + (if (logical % 2 == 0) -step else step));
         },
         else => {},
     }
@@ -285,18 +460,32 @@ fn receive(event: m.input.InputEvent) void {
             }
         }
     }
+    for ([_]u16{ 140, 141, 142 }) |id| {
+        if (result.target == target(id) and was_editing and result.interaction != .focus) {
+            if (m.text_edit.intent(event)) |edit| {
+                if (id == 140) {
+                    m.text_edit.apply(&heard, &heard_len, &heard_cursor, edit) catch |err| fail(err);
+                } else if (id == 141) {
+                    m.text_edit.apply(&problem, &problem_len, &problem_cursor, edit) catch |err| fail(err);
+                } else {
+                    m.text_edit.apply(&hypothesis, &hypothesis_len, &hypothesis_cursor, edit) catch |err| fail(err);
+                }
+            }
+        }
+    }
     if (result.activated) {
-        const ids = [_]u16{ 3, 4, 6, 7, 8, 9, 10, 30, 31, 32, 33, 34, 62, 63, 64, 65, 66, 110, 111 };
+        const ids = [_]u16{ 3, 4, 6, 7, 8, 9, 10, 30, 31, 32, 33, 34, 62, 63, 64, 65, 66, 110, 111, 80, 81, 82, 83, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 144 };
         for (ids) |id| if (result.target == target(id)) {
             activate(id) catch |err| fail(err);
         };
-        for (0..12) |i| {
+        for (0..page_size) |i| {
             const id: u16 = @intCast(1000 + i);
             if (result.target == target(id)) {
-                model.selected = page * 12 + i;
+                model.selected = page * page_size + i;
             }
         }
         for (200..210) |i| if (result.target == target(@intCast(i))) activate(@intCast(i)) catch |err| fail(err);
+        for (340..348) |i| if (result.target == target(@intCast(i))) activate(@intCast(i)) catch |err| fail(err);
         for (300..330) |i| if (result.target == target(@intCast(i))) activate(@intCast(i)) catch |err| fail(err);
     }
     switch (event) {
@@ -309,7 +498,7 @@ fn receive(event: m.input.InputEvent) void {
                 if (key == .space and valid) play(&model.current, false) catch |err| fail(err);
                 if (key == .left and model.selected > 0) model.selected -= 1;
                 if (key == .right and model.selected + 1 < model.current.len) model.selected += 1;
-                page = model.selected / 12;
+                page = model.selected / page_size;
             }
         },
         else => {},
@@ -322,13 +511,14 @@ fn platformEvent(event: window.Event) void {
         .tick => |now| {
             display.update(now);
             if (player.handle != null and player.done()) {
+                finishAudition();
                 player.stop();
                 status = "Ready";
                 rebuild();
             }
         },
         .resize => |size| {
-            display.viewport = .{ .w = std.math.clamp(size.w, 1000, 1200), .h = std.math.clamp(size.h, 720, 800) };
+            display.viewport = .{ .w = std.math.clamp(size.w, 1100, 1200), .h = std.math.clamp(size.h, 760, 800) };
             rebuild();
         },
         .focus_lost => {
@@ -343,12 +533,13 @@ extern fn fwrite([*]const u8, usize, usize, *anyopaque) usize;
 extern fn fread([*]u8, usize, usize, *anyopaque) usize;
 extern fn fclose(*anyopaque) c_int;
 extern fn getenv([*:0]const u8) ?[*:0]const u8;
-const Session = struct { version: u8 = 1, english: bool, voice: v.voice.Voice, events: []const v.event.PhonemeEvent, profiles: @TypeOf(model.profiles), text: []const u8 };
+const Session = struct { version: u8 = 2, english: bool, voice: v.voice.Voice, events: []const v.event.PhonemeEvent, targets: ?[]const v.target.AcousticTarget = null, envelope_mode: v.synth.EnvelopeMode = .single, preset: @FieldType(v.studio_model.Snapshot, "preset") = .Default, profiles: []const ?v.voice.Parameters, text: []const u8, evaluations: []const v.evaluation.Record = &.{}, comparisons: []const v.evaluation.Comparison = &.{} };
 fn saveSession() !void {
     try saveSessionTo("voice-session.json");
 }
 fn saveSessionTo(path: [*:0]const u8) !void {
-    const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, Session{ .english = model.english, .voice = model.current.voice, .events = model.current.events[0..model.current.len], .profiles = model.profiles, .text = text[0..length] }, .{ .whitespace = .indent_2 });
+    try archiveBlind();
+    const bytes = try std.json.Stringify.valueAlloc(std.heap.page_allocator, Session{ .english = model.english, .voice = model.current.voice, .events = model.current.events[0..model.current.len], .targets = model.current.targets[0..model.current.len], .envelope_mode = model.current.envelope_mode, .preset = model.current.preset, .profiles = &model.profiles, .text = text[0..length], .evaluations = evaluation_store.records.items, .comparisons = evaluation_store.comparisons.items }, .{ .whitespace = .indent_2 });
     defer std.heap.page_allocator.free(bytes);
     const f = fopen(path, "wb") orelse return error.OpenFailed;
     var closed = false;
@@ -372,20 +563,39 @@ fn loadSessionFrom(path: [*:0]const u8) !void {
     const parsed = try std.json.parseFromSlice(Session, std.heap.page_allocator, bytes[0..n], .{});
     defer parsed.deinit();
     const session = parsed.value;
-    if (session.version != 1 or session.events.len > v.studio_model.capacity or session.text.len > text.len or !std.unicode.utf8ValidateSlice(session.text)) return error.InvalidSession;
+    if ((session.version != 1 and session.version != 2) or session.events.len > v.studio_model.capacity or session.text.len > text.len or session.profiles.len > model.profiles.len or !std.unicode.utf8ValidateSlice(session.text)) return error.InvalidSession;
     var snapshot = v.studio_model.Snapshot{ .voice = session.voice, .len = session.events.len };
     @memcpy(snapshot.events[0..snapshot.len], session.events);
     snapshot.language = if (session.english) .en else .ja;
-    _ = try v.planner.plan(snapshot.events[0..snapshot.len], snapshot.targets[0..snapshot.len], .{ .language = snapshot.language });
+    @memcpy(snapshot.phrase[0..session.text.len], session.text);
+    snapshot.phrase_len = session.text.len;
+    snapshot.envelope_mode = session.envelope_mode;
+    snapshot.preset = session.preset;
+    var validation_targets: [v.studio_model.capacity]v.target.AcousticTarget = undefined;
+    _ = try v.planner.plan(snapshot.events[0..snapshot.len], &validation_targets, .{ .language = snapshot.language });
+    if (session.targets) |targets| {
+        if (targets.len != snapshot.len) return error.InvalidSession;
+        @memcpy(snapshot.targets[0..snapshot.len], targets);
+    } else _ = try v.planner.plan(snapshot.events[0..snapshot.len], snapshot.targets[0..snapshot.len], .{ .language = snapshot.language });
     _ = try v.studio_model.Model.createSynth(&snapshot);
     for (session.profiles) |parameters| if (parameters) |q| {
         const es = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .parameters = q }};
         var targets: [1]v.target.AcousticTarget = undefined;
         _ = try v.planner.plan(&es, &targets, .{});
     };
+    var loaded = v.evaluation.Store.init(std.heap.page_allocator);
+    errdefer loaded.deinit();
+    for (session.evaluations) |record| try loaded.append(record);
+    for (session.comparisons) |comparison| try loaded.appendComparison(comparison);
     model.remember();
+    model.has_pinned = false;
+    model.blind = .{};
+    comparison_saved_trials = 0;
     model.current = snapshot;
-    model.profiles = session.profiles;
+    @memset(&model.profiles, null);
+    @memcpy(model.profiles[0..session.profiles.len], session.profiles);
+    evaluation_store.deinit();
+    evaluation_store = loaded;
     model.english = session.english;
     model.selected = 0;
     page = 0;
@@ -399,22 +609,29 @@ fn loadSessionFrom(path: [*:0]const u8) !void {
 fn writeSnapshot(path: [*:0]const u8) void {
     const f = fopen(path, "wb") orelse return;
     defer _ = fclose(f);
-    const header = "P4\n1000 720\n";
+    var header_buf: [64]u8 = undefined;
+    const header = std.fmt.bufPrint(&header_buf, "P4\n{d} {d}\n", .{ display.viewport.w, display.viewport.h }) catch return;
     _ = fwrite(header.ptr, 1, header.len, f);
-    const surface = m.surface.Mono1.init(&pixels, 1000, 720) catch return;
-    var row: [125]u8 = undefined;
-    for (0..720) |y| {
+    const surface = m.surface.Mono1.init(&pixels, display.viewport.w, display.viewport.h) catch return;
+    var row: [150]u8 = undefined;
+    const stride = (@as(usize, @intCast(display.viewport.w)) + 7) / 8;
+    for (0..@intCast(display.viewport.h)) |y| {
         @memset(&row, 0);
-        for (0..1000) |x| if (surface.get(@intCast(x), @intCast(y))) {
+        for (0..@intCast(display.viewport.w)) |x| if (surface.get(@intCast(x), @intCast(y))) {
             row[x / 8] |= @as(u8, 128) >> @as(u3, @intCast(x % 8));
         };
-        _ = fwrite(&row, 1, row.len, f);
+        _ = fwrite(&row, 1, stride, f);
     }
 }
+
 pub fn main() void {
-    display.viewport = .{ .w = 1000, .h = 720 };
+    display.viewport = .{ .w = 1100, .h = 760 };
     display.setFontProvider(font.provider);
-    setText("コンニチワ");
+    defer evaluation_store.deinit();
+    model.english = true;
+    setText("hello");
+    rebuild();
+    if (getenv("MIMOC_VOICE_TAB")) |name| tab = std.meta.stringToEnum(Tab, std.mem.span(name)) orelse .phoneme;
     rebuild();
     if (getenv("MIMOC_VOICE_SNAPSHOT")) |path| {
         writeSnapshot(path);
@@ -425,7 +642,7 @@ pub fn main() void {
 }
 test "native Studio text input selection inspector and voice buttons" {
     display = .{};
-    display.viewport = .{ .w = 1000, .h = 720 };
+    display.viewport = .{ .w = 1100, .h = 760 };
     display.setFontProvider(font.provider);
     model = .{};
     setText("コンニチワ");
@@ -453,7 +670,7 @@ fn click(logical: u16) !void {
 }
 test "six required phrases via Studio input play stop and WAV export" {
     display = .{};
-    display.viewport = .{ .w = 1000, .h = 720 };
+    display.viewport = .{ .w = 1100, .h = 760 };
     display.setFontProvider(font.provider);
     model = .{};
     setText("コンニチワ");
@@ -492,7 +709,7 @@ test "six required phrases via Studio input play stop and WAV export" {
     try click(111);
     try std.testing.expectEqual(@as(usize, 1), page);
     try click(1001);
-    try std.testing.expectEqual(@as(usize, 13), model.selected);
+    try std.testing.expectEqual(@as(usize, 9), model.selected);
     const before = model.current.voice.base_pitch_hz;
     receive(.{ .pointer_down = .{ .x = 350, .y = 290 } });
     receive(.{ .pointer_move = .{ .x = 450, .y = 290 } });
@@ -521,4 +738,86 @@ test "Studio session round trip and invalid session preserve state" {
     _ = fclose(f);
     try std.testing.expectError(error.MissingField, loadSessionFrom("/tmp/mimoc-invalid-session.json"));
     try std.testing.expectEqual(@as(f32, 190), model.current.voice.base_pitch_hz);
+}
+
+fn awaitAudition() !void {
+    var ticks: usize = 0;
+    while (!player.done() and ticks < 500) : (ticks += 1) {
+        _ = usleep(10000);
+    }
+    try std.testing.expect(player.done());
+    try std.testing.expect(audio.finished());
+    finishAudition();
+}
+test "diagnostic scopes trajectory blind trials and human log session round trip" {
+    // Scores below are synthetic test fixtures, never recorded as human listening results.
+    evaluation_store.deinit();
+    evaluation_store = v.evaluation.Store.init(std.heap.page_allocator);
+    defer {
+        evaluation_store.deinit();
+        evaluation_store = v.evaluation.Store.init(std.heap.page_allocator);
+    }
+    display = .{};
+    display.viewport = .{ .w = 1100, .h = 760 };
+    display.setFontProvider(font.provider);
+    model = .{};
+    model.english = true;
+    tab = .diagnostic;
+    setText("hello");
+    rebuild();
+    model.selected = 2;
+    for (120..125) |scope_id| {
+        try click(@intCast(scope_id));
+        const range = try v.studio_model.Model.range(&model.current, 2, model.scope);
+        try click(10);
+        try awaitAudition();
+        try std.testing.expectEqual(range.end - range.start, playing.len);
+        try std.testing.expectEqual(model.current.targets[range.start].formants_start[0].frequency_hz, playing.targets[0].formants_start[0].frequency_hz);
+        try click(8);
+    }
+    try click(123);
+    try click(126);
+    try click(81);
+    try click(319);
+    try std.testing.expect(model.current.targets[2].formants_end[1].frequency_hz != model.pinned.targets[2].formants_end[1].frequency_hz);
+    try click(82);
+    try click(127);
+    for (0..5) |i| {
+        try click(128);
+        try awaitAudition();
+        rebuild();
+        try click(129);
+        try awaitAudition();
+        rebuild();
+        try click(if (i == 4) 132 else if (model.blind.x_is_new) 130 else 131);
+    }
+    try std.testing.expectEqual(@as(usize, 4), model.blind.new_wins);
+    try std.testing.expectEqual(@as(usize, 1), model.blind.ties);
+    try click(133);
+    try std.testing.expectEqual(@as(usize, 1), evaluation_store.comparisons.items.len);
+    try click(83);
+    try std.testing.expect(display.captureFocus(target(140)));
+    receive(.{ .text = "synthetic fixture" });
+    try std.testing.expectEqualStrings("synthetic fixture", heard[0..heard_len]);
+    try std.testing.expect(display.captureFocus(target(141)));
+    receive(.{ .text = "l -> ow unclear (fixture)" });
+    try std.testing.expect(display.captureFocus(target(142)));
+    receive(.{ .text = "F2 end +25 Hz (fixture)" });
+    try click(137);
+    try std.testing.expectEqual(@as(usize, 1), evaluation_store.records.items.len);
+    const preserved = model.current.targets[2].formants_end[1].frequency_hz;
+    try saveSessionTo("/tmp/mimoc-phase6-session-test.json");
+    try model.editInspector(28, 1500);
+    try loadSessionFrom("/tmp/mimoc-phase6-session-test.json");
+    try std.testing.expectEqual(preserved, model.current.targets[2].formants_end[1].frequency_hz);
+    try std.testing.expectEqual(@as(usize, 1), evaluation_store.records.items.len);
+    try std.testing.expectEqual(@as(usize, 5), evaluation_store.comparisons.items[0].trials.len);
+    try std.testing.expectEqualStrings("synthetic fixture", evaluation_store.records.items[0].heard_as);
+    try std.testing.expectEqualStrings("hello", evaluation_store.records.items[0].phrase);
+    tab = .phoneme;
+    heard_len = 0;
+    problem_len = 0;
+    hypothesis_len = 0;
+    player.stop();
+    model.scope = .whole;
 }

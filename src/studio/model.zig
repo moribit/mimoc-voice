@@ -2,11 +2,21 @@ const std = @import("std");
 const v = @import("../root.zig");
 pub const capacity = 512;
 pub const columns = 600;
-pub const Snapshot = struct { voice: v.voice.Voice = .{}, events: [capacity]v.event.PhonemeEvent = undefined, targets: [capacity]v.target.AcousticTarget = undefined, language: v.planner.Language = .ja, envelope_mode: v.synth.EnvelopeMode = .single, preset: enum { Default, Robot, Deep, Bright, Retro, Custom } = .Default, len: usize = 0 };
+pub const Scope = enum { whole, selected, previous_selected, selected_next, context };
+pub const Range = struct { start: usize, end: usize };
+pub const Snapshot = struct { phrase: [1024]u8 = undefined, phrase_len: usize = 0, voice: v.voice.Voice = .{}, events: [capacity]v.event.PhonemeEvent = undefined, targets: [capacity]v.target.AcousticTarget = undefined, language: v.planner.Language = .ja, envelope_mode: v.synth.EnvelopeMode = .single, preset: enum { Default, Robot, Deep, Bright, Retro, Custom } = .Default, len: usize = 0 };
 pub const Model = struct {
     current: Snapshot = .{},
     previous: Snapshot = .{},
     has_previous: bool = false,
+    pinned: Snapshot = .{},
+    has_pinned: bool = false,
+    blind_a: Snapshot = .{},
+    blind_b: Snapshot = .{},
+    blind: v.studio_blind.Blind = .{},
+    scope: Scope = .whole,
+    blind_scope: Scope = .whole,
+    blind_selected: usize = 0,
     selected: usize = 0,
     english: bool = false,
     profiles: [std.meta.tags(v.phoneme.PhonemeId).len]?v.voice.Parameters = @splat(null),
@@ -22,6 +32,9 @@ pub const Model = struct {
         const seq = if (self.english) try v.english.parse(text, &out) else try v.japanese.parse(text, &out);
         self.remember();
         @memcpy(self.current.events[0..seq.len], seq.events());
+        if (text.len > self.current.phrase.len) return error.TextTooLong;
+        @memcpy(self.current.phrase[0..text.len], text);
+        self.current.phrase_len = text.len;
         self.current.len = seq.len;
         self.current.language = if (self.english) .en else .ja;
         self.selected = @min(self.selected, seq.len -| 1);
@@ -29,6 +42,33 @@ pub const Model = struct {
         _ = try v.planner.plan(self.current.events[0..seq.len], self.current.targets[0..seq.len], .{ .language = self.current.language });
         try self.analyze();
         return seq.unsupported;
+    }
+    pub fn pinA(self: *Model) void {
+        self.pinned = self.current;
+        self.has_pinned = true;
+    }
+    pub fn beginBlind(self: *Model, seed: u32) !void {
+        const a = if (self.has_pinned) &self.pinned else if (self.has_previous) &self.previous else return error.NoBaseline;
+        if (!std.mem.eql(u8, a.phrase[0..a.phrase_len], self.current.phrase[0..self.current.phrase_len]) or a.language != self.current.language) return error.ComparisonPhraseMismatch;
+        if (a.len == 0 or self.current.len == 0) return error.EmptySequence;
+        self.blind_a = a.*;
+        self.blind_b = self.current;
+        self.blind_scope = self.scope;
+        self.blind_selected = self.selected;
+        _ = try range(a, self.blind_selected, self.scope);
+        _ = try range(&self.current, self.blind_selected, self.scope);
+        self.blind.start(seed);
+    }
+    pub fn range(snapshot: *const Snapshot, selected: usize, scope: Scope) !Range {
+        if (scope == .whole) return .{ .start = 0, .end = snapshot.len };
+        if (selected >= snapshot.len) return error.InvalidSelection;
+        return switch (scope) {
+            .whole => unreachable,
+            .selected => .{ .start = selected, .end = selected + 1 },
+            .previous_selected => .{ .start = selected -| 1, .end = selected + 1 },
+            .selected_next => .{ .start = selected, .end = @min(snapshot.len, selected + 2) },
+            .context => .{ .start = selected -| 1, .end = @min(snapshot.len, selected + 2) },
+        };
     }
     pub fn selectedEvent(self: *Model) ?*v.event.PhonemeEvent {
         return if (self.current.len == 0) null else &self.current.events[self.selected];
@@ -222,4 +262,23 @@ test "Studio edits comparison profile reuse and graph use common core" {
     _ = try model.parse("オ");
     try std.testing.expectEqual(@as(f32, 950), model.current.events[0].parameters.?.formants[0].frequency_hz);
     try std.testing.expect(model.maxima[100] > 0);
+}
+
+test "diagnostic ranges preserve parent context and blind freezes snapshots" {
+    var model = Model{};
+    model.english = true;
+    _ = try model.parse("hello");
+    model.selected = 2;
+    const pair = try Model.range(&model.current, 2, .selected_next);
+    try std.testing.expectEqual(@as(usize, 2), pair.start);
+    try std.testing.expectEqual(@as(usize, 4), pair.end);
+    const ctx = try Model.range(&model.current, 0, .context);
+    try std.testing.expectEqual(@as(usize, 0), ctx.start);
+    try std.testing.expectEqual(@as(usize, 2), ctx.end);
+    model.pinA();
+    try model.editInspector(28, 1250);
+    try model.beginBlind(42);
+    const before = model.blind_b.targets[2].formants_end[1].frequency_hz;
+    try model.editInspector(28, 1300);
+    try std.testing.expectEqual(before, model.blind_b.targets[2].formants_end[1].frequency_hz);
 }

@@ -128,3 +128,43 @@ test "single envelope applied only at output legacy double fixed" {
     try std.testing.expectEqual(@as(f32, 0.25), preEnvelope(1, 0.5, .legacy_double) * 0.5);
     try std.testing.expectEqual(@as(f32, 0.5), preEnvelope(1, 0.5, .single) * 0.5);
 }
+
+test "render single envelope endpoints deterministic diphthong and partial chunks" {
+    const events = [_]@import("event.zig").PhonemeEvent{.{ .phoneme = .ow, .duration_ms = 200 }};
+    var targets: [1]T = undefined;
+    _ = try @import("../planner/planner.zig").plan(&events, &targets, .{});
+    targets[0].transition_in_ms = 0;
+    targets[0].attack_ms = 80;
+    var a = try Synth.init(.{});
+    var b = try Synth.init(.{ .envelope_mode = .single });
+    var old = try Synth.init(.{ .envelope_mode = .legacy_double });
+    try a.enqueue(&targets);
+    try b.enqueue(&targets);
+    try old.enqueue(&targets);
+    var x: [3200]i16 = undefined;
+    var y: [3200]i16 = undefined;
+    var z: [3200]i16 = undefined;
+    try std.testing.expectEqual(x.len, a.render(&x));
+    try std.testing.expectEqual(x.len, old.render(&z));
+    var offset: usize = 0;
+    while (!b.finished()) {
+        const n = b.render(y[offset..@min(y.len, offset + 71)]);
+        offset += n;
+    }
+    try std.testing.expectEqualSlices(i16, &x, &y);
+    try std.testing.expectEqual(@as(i16, 0), x[0]);
+    try std.testing.expectEqual(@as(i16, 0), x[x.len - 1]);
+    var single_energy: f64 = 0;
+    var double_energy: f64 = 0;
+    for (x[0..640], z[0..640]) |xx, zz| {
+        single_energy += @as(f64, @floatFromInt(xx)) * @as(f64, @floatFromInt(xx));
+        double_energy += @as(f64, @floatFromInt(zz)) * @as(f64, @floatFromInt(zz));
+    }
+    try std.testing.expect(single_energy > double_energy);
+    var stationary = targets;
+    stationary[0].formants_end = stationary[0].formants_body;
+    var c = try Synth.init(.{});
+    try c.enqueue(&stationary);
+    _ = c.render(&y);
+    try std.testing.expect(!std.mem.eql(i16, &x, &y));
+}

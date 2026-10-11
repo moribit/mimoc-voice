@@ -34,3 +34,9 @@ test {
     _ = target;
     _ = planner;
 }
+pub const studio_blind = @import("studio/blind.zig");
+pub const evaluation = @import("studio/evaluation.zig");
+test {
+    _ = studio_blind;
+    _ = evaluation;
+}
