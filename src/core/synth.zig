@@ -1,7 +1,11 @@
 const std = @import("std");
 const E = @import("event.zig").PhonemeEvent;
 const V = @import("voice.zig");
-pub const Config = struct { sample_rate: u32 = 16000, voice: V.Voice = .{} };
+pub const EnvelopeMode = enum { single, legacy_double };
+pub const Config = struct { sample_rate: u32 = 16000, voice: V.Voice = .{}, envelope_mode: EnvelopeMode = .single };
+pub fn preEnvelope(value: f32, env: f32, mode: EnvelopeMode) f32 {
+    return if (mode == .legacy_double) value * env else value;
+}
 /// Events are borrowed and must remain immutable until finished. Enqueue only on an idle synth.
 pub const Synth = struct {
     config: Config,
@@ -72,7 +76,7 @@ pub const Synth = struct {
             for (&self.filters) |*f| y += f.process(x);
             if (q.noise > 0) y += noise * q.noise * 0.12;
             const env = @import("envelope.zig").value(self.frame, total, @intFromFloat(q.attack_ms * rate / 1000), @intFromFloat(q.release_ms * rate / 1000));
-            y *= env * q.gain * self.config.voice.amplitude * 2;
+            if (self.config.envelope_mode == .legacy_double) y *= env * q.gain * self.config.voice.amplitude * 2 else y *= q.gain * self.config.voice.amplitude * 2;
             // DC blocker followed by bounded soft limiting; no integer saturation/clipping.
             const dc = y - self.last_x + 0.995 * self.last_y;
             self.last_x = y;
@@ -114,4 +118,9 @@ test "streaming exact count partial buffers deterministic EOS" {
     try std.testing.expectEqual(frames_total, offset);
     try std.testing.expectEqual(@as(usize, 0), b.render(&small));
     try std.testing.expectEqual(@as(usize, 0), b.render(&.{}));
+}
+
+test "single envelope applied only at output legacy double fixed" {
+    try std.testing.expectEqual(@as(f32, 0.25), preEnvelope(1, 0.5, .legacy_double) * 0.5);
+    try std.testing.expectEqual(@as(f32, 0.5), preEnvelope(1, 0.5, .single) * 0.5);
 }

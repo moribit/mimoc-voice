@@ -1,5 +1,4 @@
 const std = @import("std");
-const S = @import("../core/synth.zig").Synth;
 extern fn fopen([*:0]const u8, [*:0]const u8) ?*anyopaque;
 extern fn fwrite([*]const u8, usize, usize, *anyopaque) usize;
 extern fn fclose(*anyopaque) c_int;
@@ -21,7 +20,7 @@ pub fn header(rate: u32, count: u32) ![44]u8 {
     return h;
 }
 /// Writes bounded chunks. Caller owns synth and events; filesystem only in audio adapter.
-pub fn exportFile(path: [:0]const u8, synth: *S) !void {
+pub fn exportFile(path: [:0]const u8, synth: anytype) !void {
     if (synth.index != 0 or synth.frame != 0) return error.AlreadyRendering;
     var count: u64 = 0;
     for (synth.events) |e| count += synth.frames(e);

@@ -1,0 +1,18 @@
+[
+  {
+    "name": "h",
+    "sha256": "c6b12af4e9c8658e0405bc73f140fd09261461b4e0b4c20c7c51c74048a47fc3"
+  },
+  {
+    "name": "l",
+    "sha256": "de18e2fd49b8f6b6a316f804e846bb6c3934ef7bf7dace9fcf8eb2df7962b560"
+  },
+  {
+    "name": "hello",
+    "sha256": "8adaba67c77b1380344e980cfff50c44dd0c67aada928f26810de62615d67e36"
+  },
+  {
+    "name": "konnichiwa",
+    "sha256": "fd190b81ebdf8998b8a07175a23f1984289d18c3929fd65ff8c00ef7ce699ac7"
+  }
+]

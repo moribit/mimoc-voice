@@ -50,7 +50,7 @@ pub fn main(init: std.process.Init) !void {
     var path: []const u8 = "voice.wav";
     var config = v.synth.Config{};
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--lang")) lang = args.next() orelse return error.MissingLanguage else if (std.mem.eql(u8, arg, "-o")) path = args.next() orelse return error.MissingOutput else if (std.mem.eql(u8, arg, "--rate")) config.sample_rate = try std.fmt.parseInt(u32, args.next() orelse return error.MissingRate, 10) else if (std.mem.eql(u8, arg, "--preset")) {
+        if (std.mem.eql(u8, arg, "--envelope")) config.envelope_mode = std.meta.stringToEnum(v.synth.EnvelopeMode, args.next() orelse return error.MissingEnvelope) orelse return error.UnknownEnvelope else if (std.mem.eql(u8, arg, "--lang")) lang = args.next() orelse return error.MissingLanguage else if (std.mem.eql(u8, arg, "-o")) path = args.next() orelse return error.MissingOutput else if (std.mem.eql(u8, arg, "--rate")) config.sample_rate = try std.fmt.parseInt(u32, args.next() orelse return error.MissingRate, 10) else if (std.mem.eql(u8, arg, "--preset")) {
             const name = args.next() orelse return error.MissingPreset;
             var found = false;
             for (v.voice.presets) |preset| if (std.ascii.eqlIgnoreCase(name, preset.name)) {
