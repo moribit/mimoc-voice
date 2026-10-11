@@ -28,3 +28,9 @@ pub const studio_model = @import("studio/model.zig");
 test {
     _ = studio_model;
 }
+pub const target = @import("core/target.zig");
+pub const planner = @import("planner/planner.zig");
+test {
+    _ = target;
+    _ = planner;
+}

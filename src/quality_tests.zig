@@ -10,8 +10,10 @@ test "evaluation corpus finite deterministic bounded duration and DC" {
             const seq = if (lang == 0) try v.japanese.parse(text, &es) else try v.english.parse(text, &es);
             var a = try v.synth.Synth.init(.{});
             var b = try v.synth.Synth.init(.{});
-            try a.enqueue(seq.events());
-            try b.enqueue(seq.events());
+            var targets: [128]v.target.AcousticTarget = undefined;
+            const plan = try v.planner.plan(seq.events(), &targets, .{ .language = if (lang == 0) .ja else .en });
+            try a.enqueue(plan);
+            try b.enqueue(plan);
             var buf: [257]i16 = undefined;
             var other: [257]i16 = undefined;
             var count: usize = 0;
@@ -43,7 +45,8 @@ test "all phonemes presets and sample rates stable" {
     for (std.meta.tags(v.phoneme.PhonemeId)) |p| for (v.voice.presets) |preset| for ([_]u32{ 8000, 16000, 22050, 48000 }) |rate| {
         var s = try v.synth.Synth.init(.{ .sample_rate = rate, .voice = preset.voice });
         const es = [_]v.event.PhonemeEvent{.{ .phoneme = p, .duration_ms = 75 }};
-        try s.enqueue(&es);
+        var targets: [1]v.target.AcousticTarget = undefined;
+        try s.enqueue(try v.planner.plan(&es, &targets, .{}));
         var buf: [113]i16 = undefined;
         var count: usize = 0;
         while (!s.finished()) {
@@ -64,10 +67,12 @@ test "invalid config event and busy queue rejected" {
     var parameters = v.voice.parameters(.a);
     parameters.formants[0].bandwidth_hz = std.math.nan(f32);
     const bad_filter = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .parameters = parameters }};
-    try std.testing.expectError(error.InvalidEvent, s.enqueue(&bad_filter));
+    var targets: [1]v.target.AcousticTarget = undefined;
+    try std.testing.expectError(error.InvalidTarget, v.planner.plan(&bad_filter, &targets, .{}));
     const invalid = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .duration_ms = 0 }};
-    try std.testing.expectError(error.InvalidEvent, s.enqueue(&invalid));
+    try std.testing.expectError(error.InvalidTarget, v.planner.plan(&invalid, &targets, .{}));
     const valid = [_]v.event.PhonemeEvent{.{ .phoneme = .a }};
-    try s.enqueue(&valid);
-    try std.testing.expectError(error.Busy, s.enqueue(&valid));
+    const plan = try v.planner.plan(&valid, &targets, .{});
+    try s.enqueue(plan);
+    try std.testing.expectError(error.Busy, s.enqueue(plan));
 }

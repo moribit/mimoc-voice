@@ -23,7 +23,8 @@ pub fn header(rate: u32, count: u32) ![44]u8 {
 pub fn exportFile(path: [:0]const u8, synth: anytype) !void {
     if (synth.index != 0 or synth.frame != 0) return error.AlreadyRendering;
     var count: u64 = 0;
-    for (synth.events) |e| count += synth.frames(e);
+    const sequence = if (@hasField(@TypeOf(synth.*), "targets")) synth.targets else synth.events;
+    for (sequence) |e| count += synth.frames(e);
     if (count > std.math.maxInt(u32)) return error.WavTooLarge;
     const h = try header(synth.config.sample_rate, @intCast(count));
     const f = fopen(path, "wb") orelse return error.OpenFailed;

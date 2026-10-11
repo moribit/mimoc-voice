@@ -2,7 +2,7 @@ const std = @import("std");
 const v = @import("../root.zig");
 pub const capacity = 512;
 pub const columns = 600;
-pub const Snapshot = struct { voice: v.voice.Voice = .{}, events: [capacity]v.event.PhonemeEvent = undefined, len: usize = 0 };
+pub const Snapshot = struct { voice: v.voice.Voice = .{}, events: [capacity]v.event.PhonemeEvent = undefined, targets: [capacity]v.target.AcousticTarget = undefined, language: v.planner.Language = .ja, envelope_mode: v.synth.EnvelopeMode = .single, preset: enum { Default, Robot, Deep, Bright, Retro, Custom } = .Default, len: usize = 0 };
 pub const Model = struct {
     current: Snapshot = .{},
     previous: Snapshot = .{},
@@ -23,8 +23,10 @@ pub const Model = struct {
         self.remember();
         @memcpy(self.current.events[0..seq.len], seq.events());
         self.current.len = seq.len;
+        self.current.language = if (self.english) .en else .ja;
         self.selected = @min(self.selected, seq.len -| 1);
         for (self.current.events[0..seq.len]) |*e| e.parameters = self.profiles[@backingInt(e.phoneme)];
+        _ = try v.planner.plan(self.current.events[0..seq.len], self.current.targets[0..seq.len], .{ .language = self.current.language });
         try self.analyze();
         return seq.unsupported;
     }
@@ -49,14 +51,14 @@ pub const Model = struct {
         try self.analyze();
     }
     pub fn createSynth(snapshot: *const Snapshot) !v.synth.Synth {
-        var s = try v.synth.Synth.init(.{ .voice = snapshot.voice });
-        try s.enqueue(snapshot.events[0..snapshot.len]);
+        var s = try v.synth.Synth.init(.{ .voice = snapshot.voice, .envelope_mode = snapshot.envelope_mode });
+        try s.enqueue(snapshot.targets[0..snapshot.len]);
         return s;
     }
     pub fn analyze(self: *Model) !void {
         var s = try createSynth(&self.current);
         self.total_frames = 0;
-        for (self.current.events[0..self.current.len]) |e| self.total_frames += s.frames(e);
+        for (self.current.targets[0..self.current.len]) |e| self.total_frames += s.frames(e);
         @memset(&self.minima, 0);
         @memset(&self.maxima, 0);
         var buf: [512]i16 = undefined;
@@ -72,7 +74,9 @@ pub const Model = struct {
         }
     }
     pub fn editVoice(self: *Model, index: usize, value: f32) !void {
+        if (!std.math.isFinite(value)) return error.InvalidParameter;
         self.remember();
+        self.current.preset = .Custom;
         switch (index) {
             0 => self.current.voice.base_pitch_hz = std.math.clamp(value, 40, 400),
             1 => self.current.voice.speed = std.math.clamp(value, 0.25, 4),
@@ -92,42 +96,115 @@ pub const Model = struct {
             else => self.current.voice.amplitude,
         };
     }
+    pub fn selectedTarget(self: *Model) ?*v.target.AcousticTarget {
+        return if (self.current.len == 0) null else &self.current.targets[self.selected];
+    }
     pub fn inspectorValue(self: *Model, index: usize) f32 {
-        const e = self.selectedEvent() orelse return 0;
-        const q = self.selectedParameters().?;
+        const t = self.selectedTarget() orelse return 0;
         return switch (index) {
-            0 => @floatFromInt(e.duration_ms),
-            1 => if (e.pitch_hz == 0) self.current.voice.base_pitch_hz * e.pitch_scale else @floatFromInt(e.pitch_hz),
-            2 => q.noise,
-            3, 4, 5 => q.formants[index - 3].frequency_hz,
-            6, 7, 8 => q.formants[index - 6].bandwidth_hz,
-            9 => q.gain,
-            10 => q.attack_ms,
-            11 => q.release_ms,
-            12, 13, 14 => q.formants[index - 12].gain,
+            0 => @floatFromInt(t.duration_ms),
+            1 => if (t.pitch_start_hz == 0) self.current.voice.base_pitch_hz * t.pitch_start_scale else @floatFromInt(t.pitch_start_hz),
+            2 => t.noise,
+            3, 4, 5 => t.formants_body[index - 3].frequency_hz,
+            6, 7, 8 => t.formants_body[index - 6].bandwidth_hz,
+            9 => t.gain,
+            10 => t.attack_ms,
+            11 => t.release_ms,
+            12, 13, 14 => t.formants_body[index - 12].gain,
+            20 => if (t.pitch_end_hz == 0) self.current.voice.base_pitch_hz * t.pitch_end_scale else @floatFromInt(t.pitch_end_hz),
+            21 => t.amplitude_start,
+            22 => t.amplitude_end,
+            23 => t.voicing,
+            24, 25, 26 => t.formants_start[index - 24].frequency_hz,
+            27, 28, 29 => t.formants_end[index - 27].frequency_hz,
+            30 => t.transition_in_ms,
+            31 => t.transition_out_ms,
+            32 => @floatFromInt(t.stress),
+            33 => t.closure_ms,
+            34 => t.burst_ms,
+            35 => t.noise_frequency_hz,
+            36 => t.noise_bandwidth_hz,
             else => 0,
         };
     }
     pub fn editInspector(self: *Model, index: usize, value: f32) !void {
         if (self.current.len == 0) return;
+        if (!std.math.isFinite(value)) return error.InvalidParameter;
         self.remember();
         const e = self.selectedEvent().?;
         const q = self.selectedParameters().?;
+        const t = self.selectedTarget().?;
         switch (index) {
-            0 => e.duration_ms = @intFromFloat(std.math.clamp(value, 10, 5000)),
+            0 => {
+                e.duration_ms = @intFromFloat(std.math.clamp(value, 10, 5000));
+                e.timing = .explicit;
+                t.duration_ms = e.duration_ms;
+                t.closure_ms = @min(t.closure_ms, @as(f32, @floatFromInt(t.duration_ms)));
+                t.burst_ms = @min(t.burst_ms, @as(f32, @floatFromInt(t.duration_ms)) - t.closure_ms);
+            },
             1 => {
                 e.pitch_hz = @intFromFloat(std.math.clamp(value, 40, 600));
-                e.pitch_end_hz = e.pitch_hz;
+                t.pitch_start_hz = e.pitch_hz;
             },
-            2 => q.noise = std.math.clamp(value, 0, 1),
-            3, 4, 5 => q.formants[index - 3].frequency_hz = std.math.clamp(value, 40, 7200),
-            6, 7, 8 => q.formants[index - 6].bandwidth_hz = std.math.clamp(value, 20, 2000),
-            9 => q.gain = std.math.clamp(value, 0, 4),
-            10 => q.attack_ms = std.math.clamp(value, 0, 1000),
-            11 => q.release_ms = std.math.clamp(value, 0, 1000),
-            12, 13, 14 => q.formants[index - 12].gain = std.math.clamp(value, 0, 4),
+            2 => {
+                q.noise = std.math.clamp(value, 0, 1);
+                t.noise = q.noise;
+            },
+            3, 4, 5 => {
+                const j = index - 3;
+                q.formants[j].frequency_hz = std.math.clamp(value, 40, 7200);
+                t.formants_body[j].frequency_hz = q.formants[j].frequency_hz;
+                t.formants_start[j].frequency_hz = q.formants[j].frequency_hz;
+                if (!t.glide) t.formants_end[j].frequency_hz = q.formants[j].frequency_hz;
+            },
+            6, 7, 8 => {
+                const j = index - 6;
+                q.formants[j].bandwidth_hz = std.math.clamp(value, 20, 2000);
+                t.formants_body[j].bandwidth_hz = q.formants[j].bandwidth_hz;
+                t.formants_start[j].bandwidth_hz = q.formants[j].bandwidth_hz;
+                t.formants_end[j].bandwidth_hz = q.formants[j].bandwidth_hz;
+            },
+            9 => {
+                q.gain = std.math.clamp(value, 0, 4);
+                t.gain = q.gain;
+            },
+            10 => {
+                q.attack_ms = std.math.clamp(value, 0, 1000);
+                t.attack_ms = q.attack_ms;
+            },
+            11 => {
+                q.release_ms = std.math.clamp(value, 0, 1000);
+                t.release_ms = q.release_ms;
+            },
+            12, 13, 14 => {
+                const j = index - 12;
+                q.formants[j].gain = std.math.clamp(value, 0, 4);
+                t.formants_body[j].gain = q.formants[j].gain;
+                t.formants_start[j].gain = q.formants[j].gain;
+                t.formants_end[j].gain = q.formants[j].gain;
+            },
+            20 => t.pitch_end_hz = @intFromFloat(std.math.clamp(value, 40, 600)),
+            21 => t.amplitude_start = std.math.clamp(value, 0, 4),
+            22 => t.amplitude_end = std.math.clamp(value, 0, 4),
+            23 => {
+                t.voicing = std.math.clamp(value, 0, 1);
+                q.voiced = t.voicing > 0.5;
+            },
+            24, 25, 26 => t.formants_start[index - 24].frequency_hz = std.math.clamp(value, 40, 7200),
+            27, 28, 29 => t.formants_end[index - 27].frequency_hz = std.math.clamp(value, 40, 7200),
+            30 => t.transition_in_ms = std.math.clamp(value, 0, 5000),
+            31 => t.transition_out_ms = std.math.clamp(value, 0, 5000),
+            32 => {
+                t.stress = @intFromFloat(std.math.clamp(value, 0, 2));
+                e.stress = t.stress;
+            },
+            33 => t.closure_ms = std.math.clamp(value, 0, @as(f32, @floatFromInt(t.duration_ms)) - t.burst_ms),
+            34 => t.burst_ms = std.math.clamp(value, 0, @as(f32, @floatFromInt(t.duration_ms)) - t.closure_ms),
+            35 => t.noise_frequency_hz = std.math.clamp(value, 40, 7200),
+            36 => t.noise_bandwidth_hz = std.math.clamp(value, 20, 7000),
             else => return error.InvalidParameter,
         }
+        try v.target.validate(t.*);
         try self.analyze();
     }
 };

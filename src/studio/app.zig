@@ -126,13 +126,13 @@ fn drawGraph() void {
     r.hline(20, 520, 600, true);
     for (0..600) |i| r.vline(@intCast(20 + i), @intCast(520 - @divTrunc(@as(i32, model.maxima[i]), 600)), @intCast(@max(1, @divTrunc(@as(i32, model.maxima[i]) - model.minima[i], 600))), true);
     var offset: usize = 0;
-    for (model.current.events[0..model.current.len], 0..) |e, i| {
+    for (model.current.targets[0..model.current.len], 0..) |e, i| {
         const synth = v.synth.Synth.init(.{ .voice = model.current.voice }) catch return;
         const frames = synth.frames(e);
         const x: i16 = @intCast(20 + offset * 600 / @max(model.total_frames, 1));
         r.vline(x, 466, 108, true);
         if (i == model.selected) r.rect(.{ .x = x, .y = 468, .w = @intCast(@max(2, frames * 600 / @max(model.total_frames, 1))), .h = 104 }, true);
-        const pitch = if (e.pitch_hz == 0) model.current.voice.base_pitch_hz * e.pitch_scale else @as(f32, @floatFromInt(e.pitch_hz));
+        const pitch = if (e.pitch_start_hz == 0) model.current.voice.base_pitch_hz * e.pitch_start_scale else @as(f32, @floatFromInt(e.pitch_start_hz));
         const end = if (e.pitch_end_hz == 0) model.current.voice.base_pitch_hz * e.pitch_end_scale else @as(f32, @floatFromInt(e.pitch_end_hz));
         const y: i16 = @intFromFloat(636 - std.math.clamp(pitch / 10, 4, 40));
         const ey: i16 = @intFromFloat(636 - std.math.clamp(end / 10, 4, 40));
@@ -161,6 +161,7 @@ fn play(snapshot: *const v.studio_model.Snapshot, selected: bool) !void {
     playing = snapshot.*;
     if (selected) {
         playing.events[0] = snapshot.events[model.selected];
+        playing.targets[0] = snapshot.targets[model.selected];
         playing.len = 1;
     }
     audio = try v.studio_model.Model.createSynth(&playing);
@@ -207,8 +208,7 @@ fn activate(logical: u16) !void {
         },
         62 => {
             model.remember();
-            if (model.selectedParameters()) |q| q.voiced = !q.voiced;
-            try model.analyze();
+            try model.editInspector(23, if (model.selectedTarget().?.voicing > 0.5) 0 else 1);
         },
         63 => {
             model.storeProfile();
@@ -375,11 +375,13 @@ fn loadSessionFrom(path: [*:0]const u8) !void {
     if (session.version != 1 or session.events.len > v.studio_model.capacity or session.text.len > text.len or !std.unicode.utf8ValidateSlice(session.text)) return error.InvalidSession;
     var snapshot = v.studio_model.Snapshot{ .voice = session.voice, .len = session.events.len };
     @memcpy(snapshot.events[0..snapshot.len], session.events);
+    snapshot.language = if (session.english) .en else .ja;
+    _ = try v.planner.plan(snapshot.events[0..snapshot.len], snapshot.targets[0..snapshot.len], .{ .language = snapshot.language });
     _ = try v.studio_model.Model.createSynth(&snapshot);
     for (session.profiles) |parameters| if (parameters) |q| {
-        var check = try v.synth.Synth.init(.{});
         const es = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .parameters = q }};
-        try check.enqueue(&es);
+        var targets: [1]v.target.AcousticTarget = undefined;
+        _ = try v.planner.plan(&es, &targets, .{});
     };
     model.remember();
     model.current = snapshot;

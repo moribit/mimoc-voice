@@ -5,13 +5,18 @@ const Seq = @import("sequence.zig").Sequence;
 const dictionary = @import("dictionary.zig");
 pub const Context = enum { any, word_start, word_end, before_front_vowel };
 pub const Rule = struct { pattern: []const u8, context: Context = .any, replacement: []const P };
-pub const rules = [_]Rule{ .{ .pattern = "tion", .replacement = &.{ .sh, .schwa, .n } }, .{ .pattern = "igh", .replacement = &.{ .a, .i } }, .{ .pattern = "ch", .replacement = &.{.ch} }, .{ .pattern = "sh", .replacement = &.{.sh} }, .{ .pattern = "th", .replacement = &.{.th} }, .{ .pattern = "ph", .replacement = &.{.f} }, .{ .pattern = "ng", .replacement = &.{.ng} }, .{ .pattern = "ee", .replacement = &.{.i} }, .{ .pattern = "oo", .replacement = &.{.u} }, .{ .pattern = "ea", .replacement = &.{.i} }, .{ .pattern = "ai", .replacement = &.{ .e, .i } }, .{ .pattern = "ow", .replacement = &.{.o} }, .{ .pattern = "qu", .replacement = &.{ .k, .w } }, .{ .pattern = "e", .context = .word_end, .replacement = &.{} }, .{ .pattern = "c", .context = .before_front_vowel, .replacement = &.{.s} }, .{ .pattern = "g", .context = .before_front_vowel, .replacement = &.{.j} } };
+pub const rules = [_]Rule{ .{ .pattern = "tion", .replacement = &.{ .sh, .schwa, .n } }, .{ .pattern = "igh", .replacement = &.{.ay} }, .{ .pattern = "ch", .replacement = &.{.ch} }, .{ .pattern = "sh", .replacement = &.{.sh} }, .{ .pattern = "th", .replacement = &.{.th} }, .{ .pattern = "ph", .replacement = &.{.f} }, .{ .pattern = "ng", .replacement = &.{.ng} }, .{ .pattern = "ee", .replacement = &.{.iy} }, .{ .pattern = "oo", .replacement = &.{.uw} }, .{ .pattern = "ea", .replacement = &.{.iy} }, .{ .pattern = "ai", .replacement = &.{.ey} }, .{ .pattern = "ow", .replacement = &.{.ow} }, .{ .pattern = "qu", .replacement = &.{ .k, .w } }, .{ .pattern = "e", .context = .word_end, .replacement = &.{} }, .{ .pattern = "c", .context = .before_front_vowel, .replacement = &.{.s} }, .{ .pattern = "g", .context = .before_front_vowel, .replacement = &.{.j} } };
 fn emit(seq: *Seq, ps: []const P) !void {
-    for (ps) |p| try seq.append(p, if (@import("../core/phoneme.zig").vowel(p)) 110 else 60);
+    for (ps) |p| {
+        try seq.append(p, 100);
+        seq.buffer[seq.len - 1].timing = .automatic;
+    }
 }
 fn word(seq: *Seq, w: []const u8) !void {
+    const begin = seq.len;
     for (dictionary.entries) |entry| if (std.mem.eql(u8, w, entry.word)) {
         try emit(seq, entry.phonemes);
+        if (entry.stress_index) |index| seq.buffer[begin + index].stress = 1 else stressWord(seq, begin);
         return;
     };
     var i: usize = 0;
@@ -51,7 +56,7 @@ fn word(seq: *Seq, w: []const u8) !void {
             'l' => .l,
             'm' => .m,
             'n' => .n,
-            'o' => .o,
+            'o' => .ao,
             'p' => .p,
             'r' => .r,
             's' => .s,
@@ -68,6 +73,13 @@ fn word(seq: *Seq, w: []const u8) !void {
         if (w[i] == 'x') try emit(seq, &.{.s});
         i += 1;
     }
+    stressWord(seq, begin);
+}
+fn stressWord(seq: *Seq, begin: usize) void {
+    for (seq.buffer[begin..seq.len]) |*e| if (@import("../core/phoneme.zig").vowel(e.phoneme) and e.phoneme != .schwa) {
+        e.stress = 1;
+        break;
+    };
 }
 pub fn parse(text: []const u8, out: []E) !Seq {
     if (!std.unicode.utf8ValidateSlice(text)) return error.InvalidUtf8;
@@ -132,4 +144,13 @@ test "unsupported unicode counted by codepoint and external apostrophe accepted"
     var out: [64]E = undefined;
     const seq = try parse("'hello' 沖縄", &out);
     try std.testing.expectEqual(@as(usize, 2), seq.unsupported);
+}
+
+test "hello fixed reference pronunciation and stress" {
+    var out: [8]E = undefined;
+    const seq = try parse("hello", &out);
+    const expected = [_]P{ .h, .schwa, .l, .ow };
+    for (seq.events(), expected) |e, p| try std.testing.expectEqual(p, e.phoneme);
+    try std.testing.expectEqual(@as(u8, 1), seq.events()[3].stress);
+    try std.testing.expectEqual(@as(u8, 0), seq.events()[1].stress);
 }

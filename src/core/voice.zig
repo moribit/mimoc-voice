@@ -8,13 +8,25 @@ fn f(a: f32, b: f32, c: f32) [3]Formant {
 }
 pub fn parameters(p: P) Parameters {
     var q = Parameters{ .formants = switch (p) {
-        .a, .ah => f(800, 1200, 2600),
+        .a => f(800, 1200, 2600),
+        .aa => f(730, 1090, 2440),
+        .ah => f(640, 1190, 2390),
+        .ao => f(570, 840, 2410),
+        .iy => f(270, 2290, 3010),
+        .uw => f(300, 870, 2240),
+        .ey => f(530, 1840, 2480),
+        .ay => f(730, 1090, 2440),
+        .ow => f(450, 900, 2450),
+        .aw => f(730, 1090, 2440),
+        .oy => f(570, 840, 2410),
         .i => f(280, 2300, 3000),
-        .u, .uh => f(350, 1000, 2400),
-        .e, .eh => f(500, 1900, 2600),
-        .o, .aw => f(500, 850, 2500),
-        .ae => f(680, 1800, 2600),
-        .ih => f(400, 2000, 2700),
+        .u => f(350, 1000, 2400),
+        .uh => f(440, 1020, 2240),
+        .e => f(500, 1900, 2600),
+        .eh => f(530, 1840, 2480),
+        .o => f(500, 850, 2500),
+        .ae => f(660, 1720, 2410),
+        .ih => f(390, 1990, 2550),
         .schwa => f(500, 1500, 2500),
         .er, .r => f(450, 1300, 1700),
         .m => f(250, 1000, 2100),
@@ -51,3 +63,12 @@ pub fn parameters(p: P) Parameters {
     return q;
 }
 pub const presets = [_]struct { name: []const u8, voice: Voice }{ .{ .name = "Default", .voice = .{} }, .{ .name = "Robot", .voice = .{ .base_pitch_hz = 110, .waveform = .pulse, .breath = 0 } }, .{ .name = "Deep", .voice = .{ .base_pitch_hz = 85, .formant_scale = 0.8 } }, .{ .name = "Bright", .voice = .{ .base_pitch_hz = 180, .formant_scale = 1.18 } }, .{ .name = "Retro", .voice = .{ .base_pitch_hz = 145, .waveform = .sawtooth, .breath = 0.06 } } };
+
+pub fn endFormants(p: P) [3]Formant {
+    return switch (p) {
+        .ey, .ay, .oy => parameters(.ih).formants,
+        .ow => f(350, 1100, 2450),
+        .aw => parameters(.uh).formants,
+        else => parameters(p).formants,
+    };
+}

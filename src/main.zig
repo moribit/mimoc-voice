@@ -19,7 +19,8 @@ fn bench() !void {
         if (remaining == 0) break;
     }
     if (remaining != 0) return error.BenchmarkTooShort;
-    try s.enqueue(events[0..used]);
+    var targets: [512]v.target.AcousticTarget = undefined;
+    try s.enqueue(try v.planner.plan(events[0..used], &targets, .{ .language = .ja }));
     var out: [512]i16 = undefined;
     var count: usize = 0;
     const start = try now();
@@ -74,7 +75,8 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("\n", .{});
     if (seq.unsupported > 0) std.debug.print("Unsupported input: {d} (rendered as pauses)\n", .{seq.unsupported});
     var synth = try v.synth.Synth.init(config);
-    try synth.enqueue(seq.events());
+    var targets: [2048]v.target.AcousticTarget = undefined;
+    try synth.enqueue(try v.planner.plan(seq.events(), &targets, .{ .language = if (single) .neutral else if (std.mem.eql(u8, lang, "ja")) .ja else .en }));
     if (play) {
         var player = v.playback.Player{};
         defer player.stop();
