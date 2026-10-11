@@ -34,6 +34,10 @@ test {
     _ = target;
     _ = planner;
 }
+pub const baseline = @import("diagnostic/baseline/root.zig");
+pub const baseline_phoneme = @import("diagnostic/baseline/core/phoneme.zig");
+pub const baseline_voice = @import("diagnostic/baseline/core/voice.zig");
+pub const envelope_reference = @import("diagnostic/envelope_reference.zig");
 pub const studio_blind = @import("studio/blind.zig");
 pub const evaluation = @import("studio/evaluation.zig");
 test {

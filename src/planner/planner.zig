@@ -5,7 +5,7 @@ const V = @import("../core/voice.zig");
 const A = @import("../core/target.zig");
 pub const AcousticTarget = A.AcousticTarget;
 pub const Language = enum { neutral, ja, en };
-pub const Options = struct { language: Language = .neutral, context_timing: bool = true, context_transitions: bool = true, shaped_noise: bool = true };
+pub const Options = struct { language: Language = .neutral, context_timing: bool = true, context_transitions: bool = true, shaped_noise: bool = true, dynamic_vowels: bool = true, english_vowels: bool = true, stress_prosody: bool = true };
 pub const Timing = struct { schwa: u16 = 70, short_vowel: u16 = 100, stressed_vowel: u16 = 135, diphthong: u16 = 170, fricative: u16 = 70, approximant: u16 = 85, plosive: u16 = 50, nasal: u16 = 80, affricate: u16 = 80 };
 pub fn duration(e: E, prev: ?E, next: ?E, options: Options, timing: Timing) u16 {
     if (e.timing == .explicit or options.language != .en) return e.duration_ms;
@@ -44,13 +44,21 @@ pub fn plan(events: []const E, out: []AcousticTarget, options: Options) ![]Acous
 pub fn planWithTiming(events: []const E, out: []AcousticTarget, options: Options, timing: Timing) ![]AcousticTarget {
     if (out.len < events.len) return error.NoSpace;
     for (events, 0..) |e, i| {
-        const q = e.parameters orelse V.parameters(e.phoneme);
+        const alias: P.PhonemeId = if (!options.english_vowels and options.language == .en) switch (e.phoneme) {
+            .iy => .i,
+            .uw, .uh => .u,
+            .eh => .e,
+            .aa, .ah => .a,
+            .ao => .o,
+            else => e.phoneme,
+        } else e.phoneme;
+        const q = e.parameters orelse V.parameters(alias);
         const prev = if (i > 0) events[i - 1] else null;
         const next = if (i + 1 < events.len) events[i + 1] else null;
         const ms = duration(e, prev, next, options, timing);
-        const stressed = options.language == .en and e.stress > 0;
+        const stressed = options.stress_prosody and options.language == .en and e.stress > 0;
         const weak = options.language == .en and e.phoneme == .schwa and e.stress == 0;
-        out[i] = .{ .phoneme = e.phoneme, .duration_ms = ms, .pitch_start_scale = e.pitch_scale * (if (stressed) @as(f32, 1.12) else 1), .pitch_end_scale = e.pitch_end_scale * (if (stressed) @as(f32, 1.06) else 1), .pitch_start_hz = e.pitch_hz, .pitch_end_hz = e.pitch_end_hz, .amplitude_start = if (weak) 0.65 else if (stressed) 1.12 else 1, .amplitude_end = if (weak) 0.65 else if (stressed) 1.05 else 1, .formants_start = q.formants, .formants_body = q.formants, .formants_end = if (P.diphthong(e.phoneme)) V.endFormants(e.phoneme) else q.formants, .glide = P.diphthong(e.phoneme), .voicing = if (q.voiced) 1 else 0, .noise = q.noise, .gain = q.gain, .attack_ms = q.attack_ms, .release_ms = q.release_ms, .stress = e.stress };
+        out[i] = .{ .phoneme = e.phoneme, .duration_ms = ms, .pitch_start_scale = e.pitch_scale * (if (stressed) @as(f32, 1.12) else 1), .pitch_end_scale = e.pitch_end_scale * (if (stressed) @as(f32, 1.06) else 1), .pitch_start_hz = e.pitch_hz, .pitch_end_hz = e.pitch_end_hz, .amplitude_start = if (weak) 0.65 else if (stressed) 1.12 else 1, .amplitude_end = if (weak) 0.65 else if (stressed) 1.05 else 1, .formants_start = q.formants, .formants_body = q.formants, .formants_end = if (P.diphthong(e.phoneme) and options.dynamic_vowels) V.endFormants(e.phoneme) else q.formants, .glide = P.diphthong(e.phoneme) and options.dynamic_vowels, .voicing = if (q.voiced) 1 else 0, .noise = q.noise, .gain = q.gain, .attack_ms = q.attack_ms, .release_ms = q.release_ms, .stress = e.stress };
         if (options.context_transitions) {
             out[i].transition_in_ms = if (prev) |p| transition(p.phoneme, e.phoneme) else 0;
         } else out[i].transition_in_ms = 25;
