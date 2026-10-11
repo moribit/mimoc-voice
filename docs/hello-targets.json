@@ -1,0 +1,397 @@
+{
+  "schema": 1,
+  "input": "hello",
+  "planner": {
+    "language": "en",
+    "context_timing": true,
+    "context_transitions": true,
+    "shaped_noise": true,
+    "dynamic_vowels": true,
+    "english_vowels": true,
+    "stress_prosody": true
+  },
+  "synth": {
+    "sample_rate": 16000,
+    "voice": {
+      "base_pitch_hz": 125,
+      "speed": 1,
+      "amplitude": 0.699999988079071,
+      "breath": 0.03500000014901161,
+      "formant_scale": 1,
+      "waveform": "glottal"
+    },
+    "envelope_mode": "single"
+  },
+  "events": [
+    {
+      "phoneme": "h",
+      "duration_ms": 100,
+      "pitch_hz": 0,
+      "pitch_end_hz": 0,
+      "parameters": null,
+      "pitch_scale": 1.0800000429153442,
+      "pitch_end_scale": 1.055999994277954,
+      "timing": "automatic",
+      "stress": 0
+    },
+    {
+      "phoneme": "schwa",
+      "duration_ms": 100,
+      "pitch_hz": 0,
+      "pitch_end_hz": 0,
+      "parameters": null,
+      "pitch_scale": 1.0959999561309814,
+      "pitch_end_scale": 1.0719999074935913,
+      "timing": "automatic",
+      "stress": 0
+    },
+    {
+      "phoneme": "l",
+      "duration_ms": 100,
+      "pitch_hz": 0,
+      "pitch_end_hz": 0,
+      "parameters": null,
+      "pitch_scale": 1.031999945640564,
+      "pitch_end_scale": 1.0079998970031738,
+      "timing": "automatic",
+      "stress": 0
+    },
+    {
+      "phoneme": "ow",
+      "duration_ms": 100,
+      "pitch_hz": 0,
+      "pitch_end_hz": 0,
+      "parameters": null,
+      "pitch_scale": 1.0080000162124634,
+      "pitch_end_scale": 0.984000027179718,
+      "timing": "automatic",
+      "stress": 1
+    }
+  ],
+  "targets": [
+    {
+      "phoneme": "h",
+      "duration_ms": 70,
+      "pitch_start_scale": 1.0800000429153442,
+      "pitch_end_scale": 1.055999994277954,
+      "pitch_start_hz": 0,
+      "pitch_end_hz": 0,
+      "amplitude_start": 1,
+      "amplitude_end": 1,
+      "formants_start": [
+        {
+          "frequency_hz": 500,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1500,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_body": [
+        {
+          "frequency_hz": 500,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1500,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_end": [
+        {
+          "frequency_hz": 500,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1500,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "voicing": 0,
+      "noise": 0.800000011920929,
+      "gain": 1,
+      "attack_ms": 8,
+      "release_ms": 12,
+      "transition_in_ms": 0,
+      "transition_out_ms": 0,
+      "glide": false,
+      "stress": 0,
+      "noise_shape": "aspiration",
+      "noise_frequency_hz": 1200,
+      "noise_bandwidth_hz": 2200,
+      "noise_bypass": 0,
+      "closure_ms": 0,
+      "burst_ms": 0,
+      "burst_gain": 1.7999999523162842,
+      "closure_voicing": 0.05000000074505806
+    },
+    {
+      "phoneme": "schwa",
+      "duration_ms": 70,
+      "pitch_start_scale": 1.0959999561309814,
+      "pitch_end_scale": 1.0719999074935913,
+      "pitch_start_hz": 0,
+      "pitch_end_hz": 0,
+      "amplitude_start": 0.6499999761581421,
+      "amplitude_end": 0.6499999761581421,
+      "formants_start": [
+        {
+          "frequency_hz": 500,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1500,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_body": [
+        {
+          "frequency_hz": 500,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1500,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_end": [
+        {
+          "frequency_hz": 465,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1395,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "voicing": 1,
+      "noise": 0,
+      "gain": 1,
+      "attack_ms": 8,
+      "release_ms": 12,
+      "transition_in_ms": 30,
+      "transition_out_ms": 45,
+      "glide": false,
+      "stress": 0,
+      "noise_shape": "broadband",
+      "noise_frequency_hz": 1200,
+      "noise_bandwidth_hz": 2200,
+      "noise_bypass": 0.11999999731779099,
+      "closure_ms": 0,
+      "burst_ms": 0,
+      "burst_gain": 1.7999999523162842,
+      "closure_voicing": 0.05000000074505806
+    },
+    {
+      "phoneme": "l",
+      "duration_ms": 85,
+      "pitch_start_scale": 1.031999945640564,
+      "pitch_end_scale": 1.0079998970031738,
+      "pitch_start_hz": 0,
+      "pitch_end_hz": 0,
+      "amplitude_start": 1,
+      "amplitude_end": 1,
+      "formants_start": [
+        {
+          "frequency_hz": 465,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1395,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_body": [
+        {
+          "frequency_hz": 400,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1200,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2500,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_end": [
+        {
+          "frequency_hz": 432.5,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1005,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2467.5,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "voicing": 1,
+      "noise": 0,
+      "gain": 1,
+      "attack_ms": 8,
+      "release_ms": 12,
+      "transition_in_ms": 60,
+      "transition_out_ms": 55,
+      "glide": false,
+      "stress": 0,
+      "noise_shape": "broadband",
+      "noise_frequency_hz": 1200,
+      "noise_bandwidth_hz": 2200,
+      "noise_bypass": 0.11999999731779099,
+      "closure_ms": 0,
+      "burst_ms": 0,
+      "burst_gain": 1.7999999523162842,
+      "closure_voicing": 0.05000000074505806
+    },
+    {
+      "phoneme": "ow",
+      "duration_ms": 195,
+      "pitch_start_scale": 1.1289600133895874,
+      "pitch_end_scale": 1.0430399179458618,
+      "pitch_start_hz": 0,
+      "pitch_end_hz": 0,
+      "amplitude_start": 1.1200000047683716,
+      "amplitude_end": 1.0499999523162842,
+      "formants_start": [
+        {
+          "frequency_hz": 432.5,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1005,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2467.5,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_body": [
+        {
+          "frequency_hz": 450,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 900,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2450,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "formants_end": [
+        {
+          "frequency_hz": 350,
+          "bandwidth_hz": 80,
+          "gain": 1
+        },
+        {
+          "frequency_hz": 1100,
+          "bandwidth_hz": 110,
+          "gain": 0.6499999761581421
+        },
+        {
+          "frequency_hz": 2450,
+          "bandwidth_hz": 160,
+          "gain": 0.3499999940395355
+        }
+      ],
+      "voicing": 1,
+      "noise": 0,
+      "gain": 1,
+      "attack_ms": 8,
+      "release_ms": 12,
+      "transition_in_ms": 60,
+      "transition_out_ms": 0,
+      "glide": true,
+      "stress": 1,
+      "noise_shape": "broadband",
+      "noise_frequency_hz": 1200,
+      "noise_bandwidth_hz": 2200,
+      "noise_bypass": 0.11999999731779099,
+      "closure_ms": 0,
+      "burst_ms": 0,
+      "burst_gain": 1.7999999523162842,
+      "closure_voicing": 0.05000000074505806
+    }
+  ],
+  "range": {
+    "start": 0,
+    "end": 4
+  },
+  "internal_peak": 1.198217511177063,
+  "numerical_faults": 0,
+  "frame_counts": [
+    1120,
+    1120,
+    1360,
+    3120
+  ]
+}
