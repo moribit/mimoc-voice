@@ -1,12 +1,10 @@
 const std = @import("std");
 const v = @import("voice");
 extern fn usleep(c_uint) c_int;
-extern fn gettimeofday(*Time, ?*anyopaque) c_int;
-const Time = extern struct { sec: c_long, usec: c_int };
-fn now() f64 {
-    var t: Time = undefined;
-    _ = gettimeofday(&t, null);
-    return @as(f64, @floatFromInt(t.sec)) + @as(f64, @floatFromInt(t.usec)) / 1000000;
+fn now() !f64 {
+    var t: std.c.timespec = undefined;
+    if (std.c.clock_gettime(.MONOTONIC, &t) != 0) return error.ClockFailed;
+    return @as(f64, @floatFromInt(t.sec)) + @as(f64, @floatFromInt(t.nsec)) / 1000000000;
 }
 fn bench() !void {
     var s = try v.synth.Synth.init(.{});
@@ -24,9 +22,9 @@ fn bench() !void {
     try s.enqueue(events[0..used]);
     var out: [512]i16 = undefined;
     var count: usize = 0;
-    const start = now();
+    const start = try now();
     while (!s.finished()) count += s.render(&out);
-    const elapsed = now() - start;
+    const elapsed = (try now()) - start;
     std.debug.print("16kHz / {d} frames / {d:.3} ms / {d:.0} PCM frames/s\nSynth peak heap allocation: 0 bytes; Synth size: {d} bytes; PCM chunk: {d} bytes\n", .{ count, elapsed * 1000, @as(f64, @floatFromInt(count)) / elapsed, @sizeOf(v.synth.Synth), @sizeOf(@TypeOf(out)) });
 }
 pub fn main(init: std.process.Init) !void {

@@ -1,7 +1,6 @@
 const std = @import("std");
 const E = @import("event.zig").PhonemeEvent;
 const V = @import("voice.zig");
-const P = @import("phoneme.zig");
 pub const Config = struct { sample_rate: u32 = 16000, voice: V.Voice = .{} };
 /// Events are borrowed and must remain immutable until finished. Enqueue only on an idle synth.
 pub const Synth = struct {
@@ -43,7 +42,7 @@ pub const Synth = struct {
     }
     pub fn render(self: *Synth, out: []i16) usize {
         var count: usize = 0;
-        const rate: @TypeOf(@as(f32, 0)) = @floatFromInt(self.config.sample_rate);
+        const rate: f32 = @floatFromInt(self.config.sample_rate);
         while (count < out.len and !self.finished()) {
             const e = self.events[self.index];
             const total = self.frames(e);
@@ -99,8 +98,12 @@ test "streaming exact count partial buffers deterministic EOS" {
     var b = try Synth.init(.{});
     try a.enqueue(&events);
     try b.enqueue(&events);
-    var full: [3216]i16 = undefined;
-    try std.testing.expectEqual(full.len, a.render(&full));
+    try std.testing.expectEqual(@as(usize, 0), a.render(&.{}));
+    try std.testing.expectEqual(@as(usize, 0), a.frame);
+    var full: [3220]i16 = @splat(12345);
+    const frames_total: usize = 3216;
+    try std.testing.expectEqual(frames_total, a.render(&full));
+    for (full[frames_total..]) |sample| try std.testing.expectEqual(@as(i16, 12345), sample);
     var offset: usize = 0;
     var small: [37]i16 = undefined;
     while (!b.finished()) {
@@ -108,7 +111,7 @@ test "streaming exact count partial buffers deterministic EOS" {
         try std.testing.expectEqualSlices(i16, full[offset..][0..n], small[0..n]);
         offset += n;
     }
-    try std.testing.expectEqual(full.len, offset);
+    try std.testing.expectEqual(frames_total, offset);
     try std.testing.expectEqual(@as(usize, 0), b.render(&small));
     try std.testing.expectEqual(@as(usize, 0), b.render(&.{}));
 }

@@ -58,7 +58,13 @@ test "all phonemes presets and sample rates stable" {
 test "invalid config event and busy queue rejected" {
     try std.testing.expectError(error.InvalidConfig, v.synth.Synth.init(.{ .voice = .{ .speed = 0 } }));
     try std.testing.expectError(error.InvalidConfig, v.synth.Synth.init(.{ .sample_rate = 1 }));
+    try std.testing.expectError(error.InvalidConfig, v.synth.Synth.init(.{ .voice = .{ .amplitude = std.math.inf(f32) } }));
+    try std.testing.expectError(error.InvalidConfig, v.synth.Synth.init(.{ .voice = .{ .base_pitch_hz = std.math.nan(f32) } }));
     var s = try v.synth.Synth.init(.{});
+    var parameters = v.voice.parameters(.a);
+    parameters.formants[0].bandwidth_hz = std.math.nan(f32);
+    const bad_filter = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .parameters = parameters }};
+    try std.testing.expectError(error.InvalidEvent, s.enqueue(&bad_filter));
     const invalid = [_]v.event.PhonemeEvent{.{ .phoneme = .a, .duration_ms = 0 }};
     try std.testing.expectError(error.InvalidEvent, s.enqueue(&invalid));
     const valid = [_]v.event.PhonemeEvent{.{ .phoneme = .a }};

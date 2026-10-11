@@ -127,3 +127,9 @@ test "dictionary capitalization fallback digraph punctuation apostrophe" {
     @memset(&long, 'a');
     try std.testing.expectError(error.WordTooLong, parse(&long, &a));
 }
+
+test "unsupported unicode counted by codepoint and external apostrophe accepted" {
+    var out: [64]E = undefined;
+    const seq = try parse("'hello' 沖縄", &out);
+    try std.testing.expectEqual(@as(usize, 2), seq.unsupported);
+}

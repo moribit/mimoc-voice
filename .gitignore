@@ -2,3 +2,5 @@
 zig-out/
 *.wav
 *.pbm
+.DS_Store
+voice-session.json

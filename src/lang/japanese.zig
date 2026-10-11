@@ -38,6 +38,13 @@ pub fn parse(text: []const u8, out: []E) !Seq {
                 continue;
             }
             const c = seq.buffer[seq.len - 2].phoneme;
+            switch (c) {
+                .k, .g, .sh, .j, .ch, .n, .h, .m, .r, .b, .p => {},
+                else => {
+                    seq.unsupported += 1;
+                    continue;
+                },
+            }
             seq.len -= 1;
             if (c != .sh and c != .ch and c != .j) {
                 seq.buffer[seq.len - 1].duration_ms = 30;
@@ -92,4 +99,17 @@ test "mora long geminate nasal invalid input" {
     try std.testing.expectError(error.InvalidUtf8, parse("\xff", &out));
     try std.testing.expectError(error.NoSpace, parse("アイ", out[0..1]));
     try std.testing.expectError(error.InvalidLongMark, parse("ー", &out));
+}
+
+test "invalid palatalization is reported, UTF8 capacity safe" {
+    var out: [16]E = undefined;
+    const seq = try parse("アイャ", &out);
+    try std.testing.expectEqual(@as(usize, 1), seq.unsupported);
+    const good = try parse("キャ", &out);
+    try std.testing.expectEqual(P.k, good.events()[0].phoneme);
+    try std.testing.expectEqual(P.y, good.events()[1].phoneme);
+    try std.testing.expectEqual(P.a, good.events()[2].phoneme);
+    var duration: u32 = 0;
+    for (good.events()) |e| duration += e.duration_ms;
+    try std.testing.expectEqual(@as(u32, 140), duration);
 }
